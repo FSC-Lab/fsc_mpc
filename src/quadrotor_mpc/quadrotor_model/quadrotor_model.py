@@ -69,6 +69,10 @@ class QuadrotorModel:
         self._noisy = noisy
 
     @property
+    def mass(self):
+        return self._mass
+
+    @property
     def state(self):
         return self._state
 
