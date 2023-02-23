@@ -1,0 +1,45 @@
+{
+  "name": "uav",
+  "T": 1.0,
+  "param_scheme_N": 10,
+  "cost_Q_weights": [
+    50,
+    50,
+    50,
+    0.1,
+    0.1,
+    0.1,
+    0.05,
+    0.05,
+    0.05
+  ],
+  "cost_R_weights": [
+    0.1,
+    0.1,
+    0.1,
+    0.1
+  ],
+  "constr_lbu": [
+    0.0,
+    -8.0,
+    -8.0,
+    -8.0
+  ],
+  "constr_ubu": [
+    80.0,
+    8.0,
+    8.0,
+    8.0
+  ],
+  "opts": {
+    "nlp_solver_exact_hessian": "gauss_newton",
+    "nlp_solver": "sqp_rti",
+    "qp_solver": "full_condensing_hpipm"
+  },
+  "use_cmake": true,
+  "cmake_options_on": [
+    "BUILD_ACADOS_OCP_SOLVER_LIB"
+  ],
+  "cmake_build_dir": "build",
+  "cmake_generator": "Ninja"
+}

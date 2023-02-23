@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "configurations": [
+    {
+      "name": "Example",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/examples/tracking_example.py",
+      "args": [
+        "--config",
+        "${workspaceFolder}/config/example_config.json",
+        "--trajectory",
+        "lemniscate",
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src/"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}
