@@ -3,7 +3,10 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
+from typing import Union
+
 import numpy as np
+from numpy.typing import ArrayLike
 
 from quadrotor_mpc.rotation import (
     fast_cross,
@@ -30,22 +33,40 @@ class QuadrotorModel:
 
     def __init__(
         self,
-        mass,
-        initial_state=DEFAULT_STATE,
-        noisy=False,
-        drag=False,
+        mass: float,
+        initial_state: ArrayLike = DEFAULT_STATE,
+        noisy: bool = False,
+        drag: bool = False,
     ):
-        # System state space
-        self._state = initial_state
+        """Constructs the QuadrotorModel object
 
-        self.mass = mass  # kg
+        Parameters
+        ----------
+        mass : float
+            The mass of the quadrotor
+        initial_state : ArrayLike, optional
+            The initial states of the quadrotor. An array of 10-elements in
+
+            [position, attitude, velocity]
+
+            order, where attitude is a unit quaternion in real LAST order, by default
+            DEFAULT_STATE
+        noisy : bool, optional
+            Toggles simulating additive Gaussian process noise, by default False
+        drag : bool, optional
+            Toggles simulating aerodynamic and rotor drag, by default False
+        """
+        # System state space
+        self._state = np.asarray(initial_state)
+
+        self._mass = mass  # kg
 
         # Gravity vector
-        self.g = np.array([0, 0, 9.81])  # m s^-2
+        self._g = np.array([0, 0, 9.81])  # m s^-2
         self._input = DEFAULT_INPUT  # N
 
-        self.drag = drag
-        self.noisy = noisy
+        self._drag = drag
+        self._noisy = noisy
 
     @property
     def state(self):
@@ -83,7 +104,35 @@ class QuadrotorModel:
     def control(self):
         return self._input
 
-    def model_derivatives(self, x, u, f_d=None):
+    def model_derivatives(
+        self, x: ArrayLike, u: ArrayLike, f_d: Union[ArrayLike, None] = None
+    ) -> np.ndarray:
+        """Computes the model derivatives, i.e. evaluates the equations of motion, at
+        given state `x` and input `u`
+
+        Parameters
+        ----------
+        x : ArrayLike
+            The operating state to evaluate the model derivatives. An array of
+            10-elements in
+
+                [position, attitude, velocity]
+
+            order, where attitude is a unit quaternion in real LAST order
+        u : ArrayLike
+            The control input to the quadrotor. An array of 4-elements in
+
+                [thrust, angular velocities]
+
+            order
+        f_d : Union[ArrayLike, None], optional
+            Additive process noise. An array of 3-elements, by default None
+
+        Returns
+        -------
+        np.ndarray
+            The model derivatives as a 10-element array
+        """
         x = np.asarray(x)
         u = np.asarray(u)
         dx = np.empty((self.NX,))
@@ -92,41 +141,52 @@ class QuadrotorModel:
         rate_q[0:3] = -0.5 * u[1:4]
         q = x[3:7]
         v_b = x[7:10]
-        a_thrust = np.array([0, 0, u[0]])
-
+        a_thrust = np.array([0, 0, u[0] / self._mass])
         dx[0:3] = quaternion_rotate_point(quaternion_conjugate(q), x[7:10])
         dx[3:7] = quaternion_product(rate_q, q)
         dx[7:10] = (
-            -fast_cross(u[1:4], v_b) + a_thrust + quaternion_rotate_point(q, -self.g)
+            -fast_cross(u[1:4], v_b) + a_thrust + quaternion_rotate_point(q, -self._g)
         )
         if f_d is not None:
-            dx[7:10] += f_d / self.mass
-        if self.drag:
+            f_d = np.asarray(f_d)
+            dx[7:10] += f_d / self._mass
+        if self._drag:
             # Compute aerodynamic drag acceleration in world frame
-            a_drag = -self.AERO_DRAG * v_b**2 * np.sign(v_b) / self.mass
+            a_drag = -self.AERO_DRAG * v_b**2 * np.sign(v_b) / self._mass
             # Add rotor drag
-            r_drag = -self.ROTOR_DRAG * v_b / self.mass
+            r_drag = -self.ROTOR_DRAG * v_b / self._mass
             dx[7:10] += a_drag + r_drag
         return dx
 
-    def model_update(self, u, dt):
-        """
-        Runge-Kutta 4th order dynamics integration
+    def model_update(self, u: ArrayLike, dt: float) -> np.ndarray:
+        """Runs RK4 forward simulation of the quadrotor dynamics
 
-        :param u: 4-dimensional vector with components between [0.0, 1.0] that represent
-        the activation of each motor.
-        :param dt: time differential
+        Parameters
+        ----------
+        u : ArrayLike
+            The control input to the quadrotor. An array of 4-elements in
+
+                [thrust, angular velocities]
+
+            order
+        dt : float
+            The time step for integration
+
+        Returns
+        -------
+        np.ndarray
+            A copy of the updated state as a 10-element array
         """
 
         self._input[:] = np.asarray(u)
 
         # Generate disturbance forces / torques
-        if self.noisy:
+        if self._noisy:
             f_d = np.random.normal(size=(3,), scale=10 * dt)
         else:
             f_d = np.zeros((3,))
 
-        x = self.state
+        x = np.array(self.state)
 
         # RK4 integration
 
@@ -143,3 +203,4 @@ class QuadrotorModel:
         x[3:7] = quaternion_normalize(x[3:7])
 
         self._state[:] = x
+        return x
