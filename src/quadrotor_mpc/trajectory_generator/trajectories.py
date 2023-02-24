@@ -19,33 +19,61 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <http://www.gnu.org/licenses/>.
 
+from math import isclose
+
 import numpy as np
 from numpy.typing import ArrayLike
 
+from quadrotor_mpc.acados_wrapper import AcadosWrapperException
 from quadrotor_mpc.rotation import (
-    quaternion_product,
     quaternion_conjugate,
-    undo_quaternion_flip,
+    quaternion_product,
     quaternion_rotate_point,
     rotation_matrix_to_quaternion,
+    undo_quaternion_flip,
 )
 
 from .trajectory_generator import fit_multi_segment_polynomial_trajectory, get_full_traj
 
 
-def check_trajectory(trajectory, tvec, inputs, plot=False, frame="W2B"):
+def check_trajectory(
+    trajectory: ArrayLike, u_ref: ArrayLike, t_ref: ArrayLike, frame="W2B"
+) -> None:
+    """Checks the integrity of a trajectory produced by the minimum snap trajectory
+    generator
+
+    Parameters
+    ----------
+    trajectory : ArrayLike
+        A N-by-10 array containing N trajectory points stacked row-wise
+    u_ref : ArrayLike
+        A N-by-4 array containing N inputs stacked row-wise
+    t_ref : ArrayLike
+        A N-element array containing N time references
+    frame : str, optional
+        Toggles whether the quaternion trajectory should be transformed into the
+        world-to-body form, and whether velocity trajectory should be transformed into
+        the world frame, by default "W2B"
+
+    Raises
+    ------
+    AcadosWrapperException
+        When the velocity trajectory does not match the numerical derivative between
+        corresponding position trajectory points
+    AcadosWrapperException
+        When the attitude trajectory contains non-normal quaternions
+    AcadosWrapperException
+        When the attitude trajectory does not match the thrusting orientations along the
+        thrust trajectory
+    AcadosWrapperException
+        When the angular velocity trajectory does not match the numerical derivative
+        between corresponding attitude trajectory points
     """
-
-    @param trajectory:
-    @param inputs:
-    @param tvec:
-    @param plot:
-    @return:
-    """
-
-    print("Checking trajectory integrity...")
-
+    # NO np.asarray! Make copies such that the checks will not mutate the original
+    # arrays
     trajectory = np.array(trajectory)
+    t_ref = np.array(t_ref)
+    u_ref = np.array(u_ref)
     if frame == "W2B":
         for i in range(trajectory.shape[0]):
             trajectory[i, 3:7] = quaternion_conjugate(trajectory[i, 3:7])
@@ -53,7 +81,7 @@ def check_trajectory(trajectory, tvec, inputs, plot=False, frame="W2B"):
                 trajectory[i, 3:7], trajectory[i, 7:10]
             )
 
-    dt = np.expand_dims(np.gradient(tvec, axis=0), axis=1)
+    dt = np.expand_dims(np.gradient(t_ref, axis=0), axis=1)
     numeric_derivative = np.gradient(trajectory, axis=0) / dt
 
     errors = np.zeros((dt.shape[0], 3))
@@ -66,21 +94,20 @@ def check_trajectory(trajectory, tvec, inputs, plot=False, frame="W2B"):
         analytic_velocity = trajectory[i, 7:10]
         errors[i, 0] = np.linalg.norm(numeric_velocity - analytic_velocity)
         if not np.allclose(analytic_velocity, numeric_velocity, atol=1e-2, rtol=1e-2):
-            print("inconsistent linear velocity")
-            print(numeric_velocity)
-            print(analytic_velocity)
-            return False
+            raise AcadosWrapperException(
+                f"inconsistent linear velocity {numeric_velocity} {analytic_velocity}"
+            )
 
         # 2) check if attitude is consistent with acceleration
         gravity = 9.81
         numeric_thrust = numeric_derivative[i, 7:10] + np.array([0.0, 0.0, gravity])
         numeric_thrust = numeric_thrust / np.linalg.norm(numeric_thrust)
         analytic_attitude = trajectory[i, 3:7]
-        if np.abs(np.linalg.norm(analytic_attitude) - 1.0) > 1e-6:
-            print("quaternion does not have unit norm!")
-            print(analytic_attitude)
-            print(np.linalg.norm(analytic_attitude))
-            return False
+        qnorm = np.linalg.norm(analytic_attitude)
+        if not isclose(qnorm, 1.0):
+            raise AcadosWrapperException(
+                f"quaternion does not have unit norm! {analytic_attitude} {qnorm}"
+            )
 
         e_z = np.array([0.0, 0.0, 1.0])
         q_w = 1.0 + np.dot(e_z, numeric_thrust)
@@ -100,11 +127,10 @@ def check_trajectory(trajectory, tvec, inputs, plot=False, frame="W2B"):
             atol=1e-3,
             rtol=1e-3,
         ):
-            print("Attitude and acceleration do not match!")
-            print(analytic_attitude)
-            print(numeric_attitude)
-            print(q_diff)
-            return False
+            raise AcadosWrapperException(
+                "Attitude and acceleration do not match!"
+                f" {analytic_attitude} {numeric_attitude} {q_diff}"
+            )
 
         # 3) check if bodyrates agree with attitude difference
         numeric_bodyrates = (
@@ -114,43 +140,13 @@ def check_trajectory(trajectory, tvec, inputs, plot=False, frame="W2B"):
             )[:3]
         )
         num_bodyrates.append(numeric_bodyrates)
-        analytic_bodyrates = inputs[i, 1:4]
+        analytic_bodyrates = u_ref[i, 1:4]
         errors[i, 2] = np.linalg.norm(numeric_bodyrates - analytic_bodyrates)
         if not np.allclose(numeric_bodyrates, analytic_bodyrates, atol=0.05, rtol=0.05):
-            print("inconsistent angular velocity")
-            print(numeric_bodyrates)
-            print(analytic_bodyrates)
-            return False
-
-    print("Trajectory check successful")
-    print("Maximum linear velocity error: %.5f" % np.max(errors[:, 0]))
-    print("Maximum attitude error: %.5f" % np.max(errors[:, 1]))
-    print("Maximum angular velocity error: %.5f" % np.max(errors[:, 2]))
-
-    if plot:
-        num_bodyrates = np.stack(num_bodyrates)
-        plt.figure()
-        for i in range(3):
-            plt.subplot(3, 2, i * 2 + 1)
-            plt.plot(numeric_derivative[:, i], label="numeric")
-            plt.plot(trajectory[:, 7 + i], label="analytic")
-            plt.ylabel("m/s")
-            if i == 0:
-                plt.title("Velocity check")
-            plt.legend()
-
-        for i in range(3):
-            plt.subplot(3, 2, i * 2 + 2)
-            plt.plot(num_bodyrates[:, i], label="numeric")
-            plt.plot(trajectory[:, 10 + i], label="analytic")
-            plt.ylabel("rad/s")
-            if i == 0:
-                plt.title("Body rate check")
-            plt.legend()
-        plt.suptitle("Integrity check of reference trajectory")
-        plt.show()
-
-    return True
+            raise AcadosWrapperException(
+                "inconsistent angular velocity "
+                f"{numeric_bodyrates} {analytic_bodyrates}"
+            )
 
 
 def minimum_snap_trajectory_generator(
@@ -299,7 +295,7 @@ def minimum_snap_trajectory_generator(
         print("Maximum yawrate after adaption: %.3f" % np.max(np.abs(rate[:, 2])))
 
     # Compute inputs
-    reference_u = np.column_stack((f_t, rate))
+    u_ref = np.column_stack((f_t, rate))
 
     full_pos = traj_derivatives[0, :, :].T
     full_vel = traj_derivatives[1, :, :].T
@@ -307,13 +303,13 @@ def minimum_snap_trajectory_generator(
         q[:, 0:3] = -q[:, 0:3]
         for idx in range(len_traj):
             full_vel[idx, :] = quaternion_rotate_point(q[idx, :], full_vel[idx, :])
-    reference_traj = np.concatenate((full_pos, q, full_vel), 1)
+    traj_ref = np.concatenate((full_pos, q, full_vel), 1)
 
     # Locate starting point right at x=0 and y=0.
-    reference_traj[:, 0] -= reference_traj[0, 0]
-    reference_traj[:, 1] -= reference_traj[0, 1]
+    traj_ref[:, 0] -= traj_ref[0, 0]
+    traj_ref[:, 1] -= traj_ref[0, 1]
 
-    return reference_traj, t_ref, reference_u
+    return traj_ref, u_ref, t_ref
 
 
 def straight_trajectory(quad, discretization_dt, speed):
