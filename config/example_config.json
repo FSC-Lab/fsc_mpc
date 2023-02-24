@@ -1,5 +1,5 @@
 {
-  "name": "uav",
+  "model_name": "quadrotor",
   "T": 1.0,
   "param_scheme_N": 10,
   "cost_Q_weights": [
@@ -41,5 +41,6 @@
     "BUILD_ACADOS_OCP_SOLVER_LIB"
   ],
   "cmake_build_dir": "build",
-  "cmake_generator": "Ninja"
+  "cmake_generator": "Ninja",
+  "codegen_dir": "lib/c_generated_code"
 }

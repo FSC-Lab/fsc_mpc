@@ -7,16 +7,16 @@ from typing import Any, Dict, Union
 
 import casadi as cs
 import numpy as np
-from acados_template.builders import CMakeBuilder
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
+from acados_template.builders import CMakeBuilder
 from numpy.typing import ArrayLike
 
+from quadrotor_mpc.quadrotor_model import DEFAULT_INPUT, DEFAULT_STATE, QuadrotorModel
 from quadrotor_mpc.rotation.symbolic import (
     quaternion_conjugate,
     quaternion_product,
     quaternion_rotate_point,
 )
-from quadrotor_mpc.quadrotor_model import DEFAULT_STATE, DEFAULT_INPUT, QuadrotorModel
 
 DEFAULT_Q_COST = np.array(
     [10, 10, 10, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05], dtype=np.double
@@ -24,7 +24,7 @@ DEFAULT_Q_COST = np.array(
 
 DEFAULT_R_COST = np.array([0.1, 0.1, 0.1, 0.1], dtype=np.double)
 
-DEFAULT_U_BOUNDS = np.array([[0, -8, -8, -8], [80, 8, 8, 8]])
+DEFAULT_U_BOUNDS = np.array([[0, 80], [-8, 8], [-8, 8], [-8, 8]])
 
 
 class AcadosWrapperException(Exception):
@@ -89,16 +89,25 @@ def make_acados_optimizer_from_config(config: Dict[str, Any]):
     r_cost = np.asarray(config["cost_R_weights"])
     solver_options = config["opts"]
 
-    bounds = np.row_stack(
+    bounds = np.column_stack(
         (np.asarray(config["constr_lbu"]), np.asarray(config["constr_ubu"]))
     )
     solver_kw = dict()
-    if bool(config.get("use_cmake", True)):
-        builder = CMakeBuilder()
-        builder.build_dir = config["cmake_build_dir"]
-        builder.options_on = config["cmake_options_on"]
-        builder.generator = config["cmake_generator"]
-        solver_kw["cmake_builder"] = builder
+    try:
+        if bool(config["use_cmake"]):
+            builder = CMakeBuilder()
+            builder.build_dir = config["cmake_build_dir"]
+            builder.options_on = config["cmake_options_on"]
+            builder.generator = config["cmake_generator"]
+            solver_kw["cmake_builder"] = builder
+    except KeyError:
+        pass
+
+    codegen_dir = None
+    try:
+        codegen_dir = str(config["codegen_dir"])
+    except KeyError:
+        pass
 
     return make_acados_optimizer(
         t_horizon,
@@ -109,6 +118,7 @@ def make_acados_optimizer_from_config(config: Dict[str, Any]):
         model_name,
         solver_options,
         solver_kw,
+        codegen_dir,
     )
 
 
@@ -121,6 +131,7 @@ def make_acados_optimizer(
     model_name="my_quad",
     solver_options: Union[None, Dict[str, str]] = None,
     solver_kw: Union[None, Dict[str, Any]] = None,
+    codegen_dir: Union[str, None] = None,
 ):
     acados_model = make_quadrotor_model(model_name)
     nx = acados_model.x.size()[0]  # type: ignore
@@ -169,14 +180,17 @@ def make_acados_optimizer(
     ocp.constraints.x0 = DEFAULT_STATE
 
     # Set constraints
-    if bounds.shape != (2, QuadrotorModel.NU):
+    if bounds.shape != (QuadrotorModel.NU, 2):
         raise AcadosWrapperException(
             "Input bounds must be specified as a sequence of (LB, UB) pairs convertible"
-            " to a 2 x 4 array"
+            " to a 4 x  array"
         )
-    ocp.constraints.lbu = bounds[0, :]
-    ocp.constraints.ubu = bounds[1, :]
+    ocp.constraints.lbu = bounds[:, 0]
+    ocp.constraints.ubu = bounds[:, 1]
     ocp.constraints.idxbu = np.r_[0:4]
+
+    if codegen_dir is not None:
+        ocp.code_export_directory = codegen_dir
 
     # Solver options
     if solver_options is not None:
@@ -269,8 +283,8 @@ def optimize(acados_ocp_solver, N, quad_current_state):
     acados_ocp_solver.solve()
 
     # Get u
-    w_opt_acados = np.ndarray((N, 4))
-    x_opt_acados = np.ndarray((N + 1, len(x_init)))
+    w_opt_acados = np.empty((N, 4))
+    x_opt_acados = np.empty((N + 1, len(x_init)))
     x_opt_acados[0, :] = acados_ocp_solver.get(0, "x")
     for i in range(N):
         w_opt_acados[i, :] = acados_ocp_solver.get(i, "u")
