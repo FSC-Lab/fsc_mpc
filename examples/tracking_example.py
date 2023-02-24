@@ -88,7 +88,7 @@ def main():
     control_period = t_horizon / (n_mpc_nodes * reference_over_sampling)
 
     if args.trajectory == "loop":
-        trajectory = trajectory_generator.loop_trajectory(
+        traj_ref, u_ref, t_ref = trajectory_generator.loop_trajectory(
             my_quad,
             control_period,
             radius=args.trajectory_radius,
@@ -100,7 +100,7 @@ def main():
         )
 
     elif args.trajectory == "lemniscate":
-        trajectory = trajectory_generator.lemniscate_trajectory(
+        traj_ref, u_ref, t_ref = trajectory_generator.lemniscate_trajectory(
             my_quad,
             control_period,
             radius=args.trajectory_radius,
@@ -114,18 +114,15 @@ def main():
             f"Unknown trajectory {args.trajectory}. Options are `lemniscate` and `loop`"
         )
 
-    if not trajectory_generator.check_trajectory(*trajectory):
-        return
-
-    reference_traj, reference_timestamps, reference_u = trajectory
+    trajectory_generator.check_trajectory(traj_ref, u_ref, t_ref)
 
     # Set quad initial state equal to the initial reference trajectory state
-    quad_current_state = reference_traj[0, :]
+    quad_current_state = traj_ref[0, :]
     my_quad.state = quad_current_state
 
-    ref_u = reference_u[0, :]
-    quad_trajectory = np.zeros((len(reference_timestamps), len(quad_current_state)))
-    u_optimized_seq = np.zeros((len(reference_timestamps), 4))
+    u_setpoint = u_ref[0, :]
+    quad_trajectory = np.zeros((len(t_ref), len(quad_current_state)))
+    u_optimized_seq = np.zeros((len(t_ref), 4))
 
     # Sliding reference trajectory initial index
     current_idx = 0
@@ -137,16 +134,16 @@ def main():
     total_sim_time = 0.0
 
     print("\nRunning simulation...")
-    for current_idx in tqdm(range(reference_traj.shape[0])):
+    for current_idx in tqdm(range(traj_ref.shape[0])):
         quad_current_state = my_quad.state
 
         quad_trajectory[current_idx, :] = quad_current_state
 
         # ##### Optimization runtime (outer loop) ##### #
         # Get the chunk of trajectory required for the current optimization
-        ref_traj_chunk, ref_u_chunk = acados_wrapper.get_reference_chunk(
-            reference_traj,
-            reference_u,
+        traj_ref_block, u_ref_block = acados_wrapper.get_reference_chunk(
+            traj_ref,
+            u_ref,
             current_idx,
             n_mpc_nodes,
             reference_over_sampling,
@@ -157,8 +154,8 @@ def main():
             acados_wrapper.set_reference_trajectory(
                 quadrotor_mpc,
                 n_mpc_nodes,
-                x_reference=ref_traj_chunk,
-                u_reference=ref_u_chunk,
+                x_reference=traj_ref_block,
+                u_reference=u_ref_block,
             )
         except acados_wrapper.AcadosWrapperException as exc:
             raise acados_wrapper.AcadosWrapperException(
@@ -167,14 +164,14 @@ def main():
 
         # Optimize control input to reach pre-set target
         t_opt_init = time()
-        w_opt, _ = acados_wrapper.optimize(
+        u_optimized, _ = acados_wrapper.optimize(
             quadrotor_mpc, n_mpc_nodes, quad_current_state
         )
         mean_opt_time += time() - t_opt_init
 
         # MPC applies only first optimized input to the plant
-        ref_u = w_opt[0, :]
-        u_optimized_seq[current_idx, :] = ref_u
+        u_setpoint = u_optimized[0, :]
+        u_optimized_seq[current_idx, :] = u_setpoint
 
         simulation_time = 0.0
 
@@ -182,37 +179,33 @@ def main():
         while simulation_time < control_period:
             simulation_time += simulation_dt
             total_sim_time += simulation_dt
-            my_quad.model_update(ref_u, simulation_dt)
+            my_quad.model_update(u_setpoint, simulation_dt)
 
-    u_optimized_seq[current_idx, :] = ref_u
+    u_optimized_seq[current_idx, :] = u_setpoint
 
     quad_current_state = my_quad.state
     quad_trajectory[-1, :] = quad_current_state
-    u_optimized_seq[-1, :] = ref_u
+    u_optimized_seq[-1, :] = u_setpoint
 
     # Average elapsed time per optimization
     mean_opt_time = mean_opt_time / current_idx * 1000
     tracking_rmse = np.mean(
-        np.sqrt(np.sum((reference_traj[:, :3] - quad_trajectory[:, :3]) ** 2, axis=1))
+        np.sqrt(np.sum((traj_ref[:, :3] - quad_trajectory[:, :3]) ** 2, axis=1))
     )
 
-    v_max = float(np.max(reference_traj[:, 7:10]))
+    v_max = float(np.max(traj_ref[:, 7:10]))
 
     title = rf"$v_{{max}}$={v_max:.2f} m/s | RMSE: {tracking_rmse:.4f} m"
     trajectory_tracking_results(
-        reference_timestamps,
-        reference_traj,
+        t_ref,
+        traj_ref,
         quad_trajectory,
-        reference_u,
+        u_ref,
         u_optimized_seq,
         title,
     )
 
-    v_max_abs = np.max(np.sqrt(np.sum(reference_traj[:, 7:10] ** 2, 1)))
-
-    print(f"\n{'SIMULATION SETUP'::^81s}\n")
-    print("Simulation: Applied disturbances: ")
-    print("\nModel: No regression model loaded")
+    v_max_abs = np.max(np.sqrt(np.sum(traj_ref[:, 7:10] ** 2, 1)))
 
     print(
         "\nReference: Executed trajectory",
