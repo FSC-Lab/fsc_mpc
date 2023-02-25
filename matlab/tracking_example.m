@@ -1,11 +1,11 @@
 addpath('controller/trajectories/');
 addpath('controller/model/');
-% 
+%
 warning('off', 'all');
 if exist(sprintf('%s/build', pwd), 'dir')
     rmdir('build', 's');
 end
-q_cost = [10 * ones(3, 1); ones(3, 1); 0.0; 0.05*ones(3, 1)];
+q_cost = [10 * ones(3, 1); ones(3, 1); 0.0; 0.05 * ones(3, 1)];
 r_cost = 0.1 * ones(4, 1);
 bounds = [0, 80; -8 * ones(3, 1), 8 * ones(3, 1)];
 ocp = MakeAcadosOptimizer(1.0, 10, q_cost, r_cost, bounds, 'uav');
@@ -79,7 +79,7 @@ for current_idx = 1:size(traj_ref, 1)
         quad = QuadrotorRK4Update(quad, ref_u, simulation_dt);
     end
     u_optimized_seq(current_idx, :) = ref_u;
-    
+
 end
 fprintf('\n');
 f1 = figure();

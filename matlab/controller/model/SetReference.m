@@ -10,16 +10,16 @@ if n_x_samples == 1
 else
 
     if n_x_samples < N + 1
-        x_reference = [x_reference; 
+        x_reference = [x_reference; ...
             repmat(x_reference(end, :), N + 1 - n_x_samples, 1)];
-        
-        u_reference = [u_reference;
+
+        u_reference = [u_reference; ...
             repmat(u_reference(end, :), N - n_u_samples, 1)];
     end
 
     % Determine which dynamics model to use based on the GP optimal input feature region
     for j = 0:(N - 1)
-        ref = [x_reference(j+1, :), u_reference(j+1, :)];
+        ref = [x_reference(j + 1, :), u_reference(j + 1, :)];
         ref = reshape(ref, [], 1);
         solver.set('cost_y_ref', ref, j);
     end

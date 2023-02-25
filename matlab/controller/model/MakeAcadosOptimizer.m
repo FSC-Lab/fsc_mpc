@@ -1,6 +1,6 @@
 function ocp = MakeAcadosOptimizer(t_horizon, n_nodes, q_cost, r_cost, bounds, model_name)
 
-shooting_nodes = linspace(0, t_horizon, n_nodes+1);
+shooting_nodes = linspace(0, t_horizon, n_nodes + 1);
 acados_model = MakeQuadrotorModel(model_name);
 nx = size(acados_model.model_struct.sym_x, 1);
 nu = size(acados_model.model_struct.sym_u, 1);

@@ -25,7 +25,7 @@ w_opt_acados = zeros(N, 4);
 x_opt_acados = zeros(N + 1, length(x_init));
 x_opt_acados(1, :) = solver.get('x', 0);
 for i = (0:N - 1)
-%     disp(quad_mpc.solver.get('u', i));
+    %     disp(quad_mpc.solver.get('u', i));
     w_opt_acados(i + 1, :) = solver.get('u', i);
     x_opt_acados(i + 2, :) = solver.get('x', i + 1);
 end
