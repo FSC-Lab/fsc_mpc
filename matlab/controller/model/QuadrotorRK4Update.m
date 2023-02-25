@@ -1,4 +1,4 @@
-function quad = MultirotorRK4Update(quad, u, dt)
+function quad = QuadrotorRK4Update(quad, u, dt)
 %MULTIROTORRK4UPDATE Summary of this function goes here
 %   Detailed explanation goes here
 

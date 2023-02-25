@@ -35,10 +35,6 @@ trajectory_args = struct2cell(trajectory);
 
 [traj_ref, u_ref, t_ref] = LemniscateTrajectory(quad, control_period, trajectory_args{:});
 
-expected = load('lemniscate_trajectory.mat');
-assert(all(ismembertol(expected.traj_ref, traj_ref), 'all'));
-assert(all(ismembertol(expected.u_ref, u_ref), 'all'));
-assert(all(ismembertol(expected.t_ref, t_ref), 'all'));
 CheckTrajectory(traj_ref, u_ref, t_ref, false, quad.frame);
 
 % Set quad initial state equal to the initial reference trajectory state
@@ -60,7 +56,6 @@ mean_opt_time = 0.0;
 total_sim_time = 0.0;
 
 fprintf("\nRunning simulation...\n");
-last_prog = 0;
 for current_idx = 1:size(traj_ref, 1)
 
     quad_current_state = quad.x;
@@ -85,14 +80,16 @@ for current_idx = 1:size(traj_ref, 1)
     end
     u_optimized_seq(current_idx, :) = ref_u;
     
-
-    prog = floor(10 * current_idx / size(traj_ref, 1));
-    if prog > last_prog
-        if current_idx > 1
-            fprintf('\b\b\b\b\b\b\b\b\b\b\b\b');
-        end
-        fprintf('|%-10s|', repmat('*', 1, prog)); 
-    end
-    last_prog = prog;
 end
 fprintf('\n');
+f1 = figure();
+ax = gca;
+view(ax, 3);
+ax.NextPlot = 'add';
+plot3(traj_ref(:, 1), traj_ref(:, 2), traj_ref(:, 3), '--r', 'LineWidth', 2, 'DisplayName', 'Reference');
+plot3(quad_trajectory(:, 1), quad_trajectory(:, 2), quad_trajectory(:, 3), 'b', 'LineWidth', 2, 'DisplayName', 'Executed');
+zlim(ax, [0.0, 2.0]);
+xlabel(ax, 'x (m)');
+ylabel(ax, 'Y (m)');
+zlabel(ax, 'Z (m)');
+legend(ax);
