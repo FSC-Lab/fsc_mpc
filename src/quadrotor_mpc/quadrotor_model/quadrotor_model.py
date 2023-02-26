@@ -5,9 +5,11 @@
 
 from typing import Union
 
+import casadi as cs
 import numpy as np
 from numpy.typing import ArrayLike
 
+import quadrotor_mpc.rotation.symbolic as S
 from quadrotor_mpc.rotation import (
     fast_cross,
     quaternion_conjugate,
@@ -62,7 +64,8 @@ class QuadrotorModel:
         self._mass = mass  # kg
 
         # Gravity vector
-        self._g = np.array([0, 0, 9.81])  # m s^-2
+        self._g = np.array([0, 0, -9.81])  # m s^-2
+        self._sym_g = cs.vertcat(0, 0, -9.81)
         self._input = DEFAULT_INPUT  # N
 
         self._drag = drag
@@ -108,6 +111,47 @@ class QuadrotorModel:
     def control(self):
         return self._input
 
+    def symbolic_derivatives(self, x: cs.MX, u: cs.MX) -> cs.MX:
+        """Computes the symbolic, noiseless, model derivatives, i.e. evaluates the
+        equations of motion, at given symbolic state `x` and input `u`v
+
+        Parameters
+        ----------
+        x : cs.MX
+            The operating state to evaluate the model derivatives. A 10-by-1 symbolic
+            matrix in
+
+                [position, attitude, velocity]
+
+            order, where attitude is a unit quaternion in real LAST order
+        u : cs.MX
+            The control input to the quadrotor. A 4-by-1 symbolic matrix in
+
+                [thrust, angular velocities]
+
+            order
+
+        Returns
+        -------
+        cs.MX
+            The symbolic model derivatives as a 10-by-1 symbolic matrix
+        """
+        q = x[3:7]  # quaternion
+        v_b = x[7:10]  # velocity
+
+        f = u[0]  # Thrust force
+        w = u[1:4]  # angular velocity
+
+        augmented_w = cs.vertcat(-w / 2, 0)  # Minus half angular velocity as quaternion
+        a_thrust = cs.vertcat(0.0, 0.0, f / self._mass)  # Thrust vector in body frame
+
+        # Return the core equations of motion
+        return cs.vertcat(
+            S.quaternion_rotate_point(S.quaternion_conjugate(q), v_b),
+            S.quaternion_product(augmented_w, q),
+            -cs.cross(w, v_b, 1) + a_thrust + S.quaternion_rotate_point(q, self._sym_g),
+        )
+
     def model_derivatives(
         self, x: ArrayLike, u: ArrayLike, f_d: Union[ArrayLike, None] = None
     ) -> np.ndarray:
@@ -139,18 +183,24 @@ class QuadrotorModel:
         """
         x = np.asarray(x)
         u = np.asarray(u)
-        dx = np.empty((self.NX,))
 
-        rate_q = np.zeros((4,))
-        rate_q[0:3] = -0.5 * u[1:4]
-        q = x[3:7]
-        v_b = x[7:10]
-        a_thrust = np.array([0, 0, u[0] / self._mass])
-        dx[0:3] = quaternion_rotate_point(quaternion_conjugate(q), x[7:10])
-        dx[3:7] = quaternion_product(rate_q, q)
-        dx[7:10] = (
-            -fast_cross(u[1:4], v_b) + a_thrust + quaternion_rotate_point(q, -self._g)
-        )
+        q = x[3:7]  # quaternion
+        v_b = x[7:10]  # velocity
+
+        f = u[0]  # Thrust force
+        w = u[1:4]  # angular velocity
+
+        augmented_w = np.zeros((4,))
+        augmented_w[0:3] = -0.5 * w  # Minus half angular velocity as quaternion
+        a_thrust = np.array([0, 0, f / self._mass])  # Thrust vector in body frame
+
+        # Evaluate the core equations of motion
+        dx = np.empty((self.NX,))
+        dx[0:3] = quaternion_rotate_point(quaternion_conjugate(q), v_b)
+        dx[3:7] = quaternion_product(augmented_w, q)
+        dx[7:10] = -fast_cross(w, v_b) + a_thrust + quaternion_rotate_point(q, self._g)
+
+        # Add disturbances and drag
         if f_d is not None:
             f_d = np.asarray(f_d)
             dx[7:10] += f_d / self._mass

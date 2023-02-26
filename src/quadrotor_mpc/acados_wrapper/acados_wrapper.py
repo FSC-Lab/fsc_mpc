@@ -12,11 +12,6 @@ from acados_template.builders import CMakeBuilder
 from numpy.typing import ArrayLike
 
 from quadrotor_mpc.quadrotor_model import DEFAULT_INPUT, DEFAULT_STATE, QuadrotorModel
-from quadrotor_mpc.rotation.symbolic import (
-    quaternion_conjugate,
-    quaternion_product,
-    quaternion_rotate_point,
-)
 
 DEFAULT_Q_COST = np.array(
     [10, 10, 10, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05], dtype=np.double
@@ -31,28 +26,13 @@ class AcadosWrapperException(Exception):
     pass
 
 
-def make_quadrotor_model(model_name: str):
+def make_quadrotor_model(model_name: str, mass: float = 1.0):
     # Declare model variables
-    p = cs.MX.sym("p", 3)  # type: ignore   position
-    q = cs.MX.sym("a", 4)  # type: ignore   angle quaternion (wxyz)
-    v = cs.MX.sym("v", 3)  # type: ignore   velocity
+    x = cs.MX.sym("x", 10)  # type: ignore
+    u = cs.MX.sym("u", 4)  # type: ignore
 
-    x = cs.vertcat(p, q, v)  # Full state vector (10-dimensional)
-
-    f = cs.MX.sym("f")  # type: ignore      thrust force
-    r = cs.MX.sym("r", 3)  # type: ignore   angle rate
-
-    u = cs.vertcat(f, r)  # Control input vector (4-dimensional)
-
-    g = cs.vertcat(0.0, 0.0, -9.81)  # Gravity vector in world frame
-    a_thrust = cs.vertcat(0.0, 0.0, f)  # Thrust vector in body frame
-
-    f_expl = cs.vertcat(
-        quaternion_rotate_point(quaternion_conjugate(q), v),  # Position
-        1 / 2 * quaternion_product(cs.vertcat(-r, 0), q),  # Attitude
-        -cs.cross(r, v, 1) + quaternion_rotate_point(q, g) + a_thrust,  # Velocity
-    )
-
+    model = QuadrotorModel(mass)
+    f_expl = model.symbolic_derivatives(x, u)
     x_dot = cs.MX.sym("x_dot", f_expl.shape)  # type: ignore
     f_impl = x_dot - f_expl
 
