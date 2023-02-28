@@ -36,11 +36,16 @@
     "nlp_solver": "sqp_rti",
     "qp_solver": "full_condensing_hpipm"
   },
-  "use_cmake": true,
-  "cmake_options_on": [
-    "BUILD_ACADOS_OCP_SOLVER_LIB"
-  ],
-  "cmake_build_dir": "build",
-  "cmake_generator": "Ninja",
-  "codegen_dir": "lib/c_generated_code"
+  "codegen_dir": "lib/quadrotor_mpc",
+  "solver": {
+    "build": false,
+    "generate": false,
+    "json_file": "quadrotor_ocp_nlp.json",
+    "use_cmake": false,
+    "cmake_options_on": [
+      "BUILD_ACADOS_OCP_SOLVER_LIB"
+    ],
+    "cmake_build_dir": "build",
+    "cmake_generator": "Ninja"
+  }
 }

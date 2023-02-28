@@ -72,20 +72,25 @@ def make_acados_optimizer_from_config(config: Dict[str, Any]):
     bounds = np.column_stack(
         (np.asarray(config["constr_lbu"]), np.asarray(config["constr_ubu"]))
     )
-    solver_kw = dict()
-    try:
-        if bool(config["use_cmake"]):
-            builder = CMakeBuilder()
-            builder.build_dir = config["cmake_build_dir"]
-            builder.options_on = config["cmake_options_on"]
-            builder.generator = config["cmake_generator"]
-            solver_kw["cmake_builder"] = builder
-    except KeyError:
-        pass
 
     codegen_dir = None
     try:
         codegen_dir = str(config["codegen_dir"])
+    except KeyError:
+        pass
+
+    solver_kw = dict()
+    try:
+        solver_config = config["solver"]
+        solver_kw["json_file"] = solver_config["json_file"]
+        solver_kw["build"] = solver_config["build"]
+        solver_kw["generate"] = solver_config["generate"]
+        if bool(solver_config["solver"]["use_cmake"]):
+            builder = CMakeBuilder()
+            builder.build_dir = solver_config["cmake_build_dir"]
+            builder.options_on = solver_config["cmake_options_on"]
+            builder.generator = solver_config["cmake_generator"]
+            solver_kw["cmake_builder"] = builder
     except KeyError:
         pass
 
