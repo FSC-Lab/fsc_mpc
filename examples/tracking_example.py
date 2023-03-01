@@ -18,9 +18,9 @@ def parse_cli():
     parser = ArgumentParser()
 
     parser.add_argument(
-        "--config",
+        "--codegen_dir",
         type=str,
-        default="../config/example_config.json",
+        default="../lib",
         help="File containing the Acados configuration",
     )
 
@@ -112,14 +112,14 @@ def main():
 
     trajectory_generator.check_trajectory(traj_ref, u_ref, t_ref)
 
-    config_file = Path(args.config)
+    codegen_dir = Path(args.codegen_dir)
     # Initialize quad MPC
-    if config_file.exists():
-        quadrotor_mpc = acados_wrapper.AcadosWrapper.restore_from_file(str(config_file))
+    if codegen_dir.exists():
+        quadrotor_mpc = acados_wrapper.AcadosWrapper.restore_from_file(str(codegen_dir))
     else:
         model = acados_wrapper.make_quadrotor_model("quadrotor")
         quadrotor_mpc = acados_wrapper.AcadosWrapper.make_new(
-            1.0, 10, model, json_file=str(config_file)
+            1.0, 10, model, codegen_dst=str(codegen_dir)
         )
 
     # Set quad initial state equal to the initial reference trajectory state

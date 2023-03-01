@@ -3,7 +3,9 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
-from typing import Dict, Optional
+import pathlib
+from os import PathLike
+from typing import Dict, Optional, Union
 
 import casadi as cs
 import numpy as np
@@ -72,8 +74,7 @@ class AcadosWrapper:
         lbu: ArrayLike = DEFAULT_LB,
         ubu: ArrayLike = DEFAULT_UB,
         solver_options: Optional[Dict[str, str]] = None,
-        codegen_dir: Optional[str] = None,
-        json_file: Optional[str] = None,
+        codegen_dst: Union[str, PathLike] = "lib",
     ):
         cls._n_nodes = n_nodes
 
@@ -125,8 +126,16 @@ class AcadosWrapper:
         ocp.constraints.ubu = ubu
         ocp.constraints.idxbu = np.r_[0:4]
 
-        if codegen_dir is not None:
-            ocp.code_export_directory = codegen_dir
+        codegen_dst = pathlib.Path(codegen_dst)
+
+        if codegen_dst.exists() and codegen_dst.is_file():
+            raise FileExistsError("Codegen destination can not be an existing file")
+
+        if not codegen_dst.exists():
+            pathlib.Path.mkdir(codegen_dst, parents=True)
+
+        ocp.code_export_directory = str(codegen_dst / "c_generated_code")
+        json_file = str(codegen_dst / "acados_ocp_nlp.json")
 
         # Solver options
         if solver_options is not None:
@@ -135,15 +144,16 @@ class AcadosWrapper:
                     v = v.upper()
                 ocp.solver_options.set(k, v)
 
-        solver_kw = {}
-        if json_file is not None:
-            solver_kw["json_file"] = json_file
-
-        return cls(AcadosOcpSolver(ocp, build=True, generate=True, **solver_kw))
+        return cls(AcadosOcpSolver(ocp, build=True, generate=True, json_file=json_file))
 
     @classmethod
-    def restore_from_file(cls, json_file):
-        return cls(AcadosOcpSolver(AcadosOcp(), json_file, build=False, generate=False))
+    def restore_from_file(cls, codegen_file):
+        codegen_file = pathlib.Path(codegen_file)
+        if codegen_file.is_dir():
+            codegen_file /= "acados_ocp_nlp.json"
+        return cls(
+            AcadosOcpSolver(AcadosOcp(), str(codegen_file), build=False, generate=False)
+        )
 
     @property
     def n_nodes(self):
