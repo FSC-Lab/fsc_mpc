@@ -3,23 +3,23 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
-from typing import Any, Dict, Union
+from typing import Dict, Optional
 
 import casadi as cs
 import numpy as np
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from acados_template.builders import CMakeBuilder
 from numpy.typing import ArrayLike
 
 from quadrotor_mpc.quadrotor_model import DEFAULT_INPUT, DEFAULT_STATE, QuadrotorModel
 
 DEFAULT_Q_COST = np.array(
-    [10, 10, 10, 0.1, 0.1, 0.1, 0.05, 0.05, 0.05], dtype=np.double
+    [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05], dtype=np.double
 )
 
 DEFAULT_R_COST = np.array([0.1, 0.1, 0.1, 0.1], dtype=np.double)
 
-DEFAULT_U_BOUNDS = np.array([[0, 80], [-8, 8], [-8, 8], [-8, 8]])
+DEFAULT_LB = np.array([0.0, -8.0, -8.0, -8.0], dtype=np.double)
+DEFAULT_UB = np.array([80.0, 8.0, 8.0, 8.0], dtype=np.double)
 
 
 class AcadosWrapperException(Exception):
@@ -38,7 +38,7 @@ def make_quadrotor_model(model_name: str, mass: float = 1.0):
 
     # Dynamics model
     acados_model = AcadosModel()
-    acados_model.f_expl_expr = f_expl
+    acados_model.f_expl_expr = f_expl  # type: ignore
     acados_model.f_impl_expr = f_impl
     acados_model.x = x
     acados_model.xdot = x_dot
@@ -48,234 +48,195 @@ def make_quadrotor_model(model_name: str, mass: float = 1.0):
     return acados_model
 
 
-def make_acados_optimizer_from_config(config: Dict[str, Any]):
-    model_name = str(config.get("model_name", "my_quad"))
-    t_horizon = config["T"]
-    n_nodes = config["param_scheme_N"]
-
-    q_cost = np.asarray(config["cost_Q_weights"])
-    # Add one more weight to the rotation (use quaternion norm weighting in acados)
-    if q_cost.size == QuadrotorModel.NX - 1:
-        q_cost = np.concatenate(
-            (q_cost[:3], np.atleast_1d(q_cost[3:6].mean()), q_cost[3:])
-        )
-    try:
-        q_mask = np.asarray(config["cost_Q_mask"], dtype=np.double)
-        q_mask = np.concatenate((q_mask[:3], np.array([0.0]), q_mask[3:]))
-        q_cost *= q_mask
-    except KeyError:
-        pass
-
-    r_cost = np.asarray(config["cost_R_weights"])
-    solver_options = config["opts"]
-
-    bounds = np.column_stack(
-        (np.asarray(config["constr_lbu"]), np.asarray(config["constr_ubu"]))
-    )
-
-    codegen_dir = None
-    try:
-        codegen_dir = str(config["codegen_dir"])
-    except KeyError:
-        pass
-
-    solver_kw = dict()
-    try:
-        solver_config = config["solver"]
-        solver_kw["json_file"] = solver_config["json_file"]
-        solver_kw["build"] = solver_config["build"]
-        solver_kw["generate"] = solver_config["generate"]
-        if bool(solver_config["solver"]["use_cmake"]):
-            builder = CMakeBuilder()
-            builder.build_dir = solver_config["cmake_build_dir"]
-            builder.options_on = solver_config["cmake_options_on"]
-            builder.generator = solver_config["cmake_generator"]
-            solver_kw["cmake_builder"] = builder
-    except KeyError:
-        pass
-
-    return make_acados_optimizer(
-        t_horizon,
-        n_nodes,
-        q_cost,
-        r_cost,
-        bounds,
-        model_name,
-        solver_options,
-        solver_kw,
-        codegen_dir,
-    )
-
-
-def make_acados_optimizer(
-    t_horizon,
-    n_nodes,
-    q_cost=DEFAULT_Q_COST,
-    r_cost=DEFAULT_R_COST,
-    bounds=DEFAULT_U_BOUNDS,
-    model_name="my_quad",
-    solver_options: Union[None, Dict[str, str]] = None,
-    solver_kw: Union[None, Dict[str, Any]] = None,
-    codegen_dir: Union[str, None] = None,
-):
-    acados_model = make_quadrotor_model(model_name)
-    nx = acados_model.x.size()[0]  # type: ignore
-    nu = acados_model.u.size()[0]  # type: ignore
-    ny = nx + nu
-    n_param = acados_model.p.size()[0] if isinstance(acados_model.p, cs.MX) else 0
-
-    # Create OCP object to formulate the optimization
-    ocp = AcadosOcp()
-    ocp.model = acados_model
-    ocp.dims.N = n_nodes
-    ocp.solver_options.tf = t_horizon
-
-    # Initialize parameters
-    ocp.dims.np = n_param
-    ocp.parameter_values = np.zeros(n_param)
-
-    ocp.cost.cost_type = "LINEAR_LS"
-    ocp.cost.cost_type_e = "LINEAR_LS"
-
-    q_cost = np.asarray(q_cost)
-    if q_cost.size != QuadrotorModel.NX:
-        raise AcadosWrapperException(
-            "Number of state weights does not match the state dimension 10"
-        )
-
-    r_cost = np.asarray(r_cost)
-    if r_cost.size != QuadrotorModel.NU:
-        raise AcadosWrapperException(
-            "Number of input weights does not match the input dimension 4"
-        )
-    ocp.cost.W = np.diag(np.concatenate((q_cost, r_cost)))
-    ocp.cost.W_e = np.diag(q_cost)
-
-    ocp.cost.Vx = np.zeros((ny, nx))
-    ocp.cost.Vx[:nx, :nx] = np.eye(nx)
-    ocp.cost.Vu = np.zeros((ny, nu))
-    ocp.cost.Vu[-4:, -4:] = np.eye(nu)
-    ocp.cost.Vx_e = np.eye(nx)
-
-    # Initial reference trajectory (will be overwritten)
-    ocp.cost.yref = np.concatenate((DEFAULT_STATE, DEFAULT_INPUT))
-    ocp.cost.yref_e = DEFAULT_STATE
-
-    # Initial state (will be overwritten)
-    ocp.constraints.x0 = DEFAULT_STATE
-
-    # Set constraints
-    if bounds.shape != (QuadrotorModel.NU, 2):
-        raise AcadosWrapperException(
-            "Input bounds must be specified as a sequence of (LB, UB) pairs convertible"
-            " to a 4 x  array"
-        )
-    ocp.constraints.lbu = bounds[:, 0]
-    ocp.constraints.ubu = bounds[:, 1]
-    ocp.constraints.idxbu = np.r_[0:4]
-
-    if codegen_dir is not None:
-        ocp.code_export_directory = codegen_dir
-
-    # Solver options
-    if solver_options is not None:
-        for k, v in solver_options.items():
-            if isinstance(v, str):
-                v = v.upper()
-            ocp.solver_options.set(k, v)
-    if solver_kw is not None:
-        return AcadosOcpSolver(ocp, **solver_kw)
-
-    return AcadosOcpSolver(ocp)
-
-
-def set_reference_trajectory(
-    acados_ocp_solver: AcadosOcpSolver,
-    N: int,
-    x_reference: ArrayLike,
-    u_reference: ArrayLike,
-) -> None:
-    """Sets a target trajectory for the Optimal Control Problem solver
-
-    Parameters
-    ----------
-    acados_ocp_solver : AcadosOcpSolver
-        An instance of the Acados Optimal Control Problem Solver
-    N : int
-        Number of shooting nodes
-    x_reference : ArrayLike
-        The state reference, stacked row-wise for each shooting node. If there are fewer
-        states than shooting nodes, i.e. x_reference has fewer rows than N + 1, then it
-        will be padded by the last state
-    u_reference : ArrayLike
-        The input reference, stacked row-wise for each shooting node. The number of
-        inputs must match the number of states or one less than the number of reference
-        states
-
-    Raises
-    ------
-    AcadosException
-        When the number of input references does not match the number of state
-        references
+class AcadosWrapper:
+    """
+    A wrapper over AcadosOcpSolver that abstracts away some operations such as
+    construction / restoring from file, setting references, and running optimization
     """
 
-    x_reference = np.asarray(x_reference)
-    u_reference = np.asarray(u_reference)
-    n_x_samples, nx = x_reference.shape
-    n_u_samples, nu = u_reference.shape
-    if n_x_samples not in (n_u_samples + 1, n_u_samples):
-        raise AcadosWrapperException(
-            f"Number of state ({n_x_samples}) and input ({n_u_samples}) references do"
-            " not match"
-        )
+    def __init__(self, solver: AcadosOcpSolver):
+        self._solver = solver
+        self._n_nodes = int(self._solver.N)
+        self._nx = np.size(solver.get(0, "x"))
+        self._nu = np.size(solver.get(0, "u"))
+        self._ny = self._nx + self._nu
 
-    # If not enough states in target sequence, append last state until required length
-    # is met
-    if n_x_samples < N + 1:
-        x_reference_data, x_reference = x_reference.copy(), np.empty((N + 1, nx))
-        u_reference_data, u_reference = u_reference.copy(), np.empty((N, nu))
-        x_reference[:n_x_samples, :] = x_reference_data
-        u_reference[:n_u_samples, :] = u_reference_data
-        x_reference[n_x_samples:, :] = x_reference_data[-1, :]
-        u_reference[n_u_samples:, :] = u_reference_data[-1, :]
+    @classmethod
+    def make_new(
+        cls,
+        t_horizon: float,
+        n_nodes: int,
+        model: AcadosModel,
+        q_cost: ArrayLike = DEFAULT_Q_COST,
+        r_cost: ArrayLike = DEFAULT_R_COST,
+        lbu: ArrayLike = DEFAULT_LB,
+        ubu: ArrayLike = DEFAULT_UB,
+        solver_options: Optional[Dict[str, str]] = None,
+        codegen_dir: Optional[str] = None,
+        json_file: Optional[str] = None,
+    ):
+        cls._n_nodes = n_nodes
 
-    for j in range(N):
-        ref = np.concatenate((x_reference[j, :], u_reference[j, :]))
-        acados_ocp_solver.set(j, "yref", ref)
-    # the last MPC node has only a state reference but no input reference
-    acados_ocp_solver.set(N, "yref", x_reference[N, :])
+        # Create OCP object to formulate the optimization
+        ocp = AcadosOcp()
+        ocp.model = model
+        cls._nx = model.x.size()[0]  # type: ignore
+        cls._nu = model.u.size()[0]  # type: ignore
+        cls._ny = cls._nx + cls._nu
+        ocp.dims.N = n_nodes
+        ocp.solver_options.tf = t_horizon
 
+        ocp.cost.cost_type = "LINEAR_LS"
+        ocp.cost.cost_type_e = "LINEAR_LS"
+        q_cost = np.asarray(q_cost, dtype=np.double)
+        if q_cost.size != cls._nx:
+            raise AcadosWrapperException(
+                "Number of state weights does not match the state dimension 10"
+            )
 
-def set_reference_state(acados_ocp_solver, N, x_reference, u_reference):
-    ref = np.concatenate((np.asarray(x_reference), np.asarray(u_reference)))
+        r_cost = np.asarray(r_cost, dtype=np.double)
+        if r_cost.size != cls._nu:
+            raise AcadosWrapperException(
+                "Number of input weights does not match the input dimension 4"
+            )
+        ocp.cost.W = np.diag(np.concatenate((q_cost, r_cost)))
+        ocp.cost.W_e = np.diag(q_cost)
 
-    for j in range(N):
-        acados_ocp_solver.set(j, "yref", ref)
-    acados_ocp_solver.set(N, "yref", ref[:-4])
+        ocp.cost.Vx = np.zeros((cls._ny, cls._nx))
+        ocp.cost.Vx[: cls._nx, : cls._nx] = np.eye(cls._nx)
+        ocp.cost.Vu = np.zeros((cls._ny, cls._nu))
+        ocp.cost.Vu[-4:, -4:] = np.eye(cls._nu)
+        ocp.cost.Vx_e = np.eye(cls._nx)
+        # Initial reference trajectory (will be overwritten)
+        ocp.cost.yref = np.concatenate((DEFAULT_STATE, DEFAULT_INPUT))
+        ocp.cost.yref_e = DEFAULT_STATE
 
-    return True
+        # Initial state (will be overwritten)
+        ocp.constraints.x0 = DEFAULT_STATE
 
+        # Set constraints
+        lbu = np.asarray(lbu, dtype=np.double)
+        ubu = np.asarray(ubu, dtype=np.double)
+        if lbu.size != cls._nu or ubu.size != cls._nu:
+            raise AcadosWrapperException(
+                "Number of input bounds does not match the input dimension 4"
+            )
+        ocp.constraints.lbu = lbu
+        ocp.constraints.ubu = ubu
+        ocp.constraints.idxbu = np.r_[0:4]
 
-def optimize(acados_ocp_solver, N, quad_current_state):
-    # Set initial state. Add gp state if needed
-    x_init = np.asarray(quad_current_state)
+        if codegen_dir is not None:
+            ocp.code_export_directory = codegen_dir
 
-    # Set initial condition, equality constraint
-    acados_ocp_solver.set(0, "lbx", x_init)
-    acados_ocp_solver.set(0, "ubx", x_init)
+        # Solver options
+        if solver_options is not None:
+            for k, v in solver_options.items():
+                if isinstance(v, str):
+                    v = v.upper()
+                ocp.solver_options.set(k, v)
 
-    # Solve OCP
-    acados_ocp_solver.solve()
+        solver_kw = {}
+        if json_file is not None:
+            solver_kw["json_file"] = json_file
 
-    # Get u
-    w_opt_acados = np.empty((N, 4))
-    x_opt_acados = np.empty((N + 1, len(x_init)))
-    x_opt_acados[0, :] = acados_ocp_solver.get(0, "x")
-    for i in range(N):
-        w_opt_acados[i, :] = acados_ocp_solver.get(i, "u")
-        x_opt_acados[i + 1, :] = acados_ocp_solver.get(i + 1, "x")
+        return cls(AcadosOcpSolver(ocp, build=True, generate=True, **solver_kw))
 
-    return w_opt_acados, x_opt_acados
+    @classmethod
+    def restore_from_file(cls, json_file):
+        return cls(AcadosOcpSolver(AcadosOcp(), json_file, build=False, generate=False))
+
+    @property
+    def n_nodes(self):
+        return self._n_nodes
+
+    def set_reference_trajectory(
+        self,
+        x_reference: ArrayLike,
+        u_reference: ArrayLike,
+    ) -> None:
+        """Sets a target trajectory for the Optimal Control Problem solver
+
+        Parameters
+        ----------
+        acados_ocp_solver : AcadosOcpSolver
+            An instance of the Acados Optimal Control Problem Solver
+        N : int
+            Number of shooting nodes
+        x_reference : ArrayLike
+            The state reference, stacked row-wise for each shooting node. If there are
+            fewer states than shooting nodes, i.e. x_reference has fewer rows than N +
+            1, then it will be padded by the last state
+        u_reference : ArrayLike
+            The input reference, stacked row-wise for each shooting node. The number of
+            inputs must match the number of states or one less than the number of
+            reference states
+
+        Raises
+        ------
+        AcadosException
+            When the number of input references does not match the number of state
+            references
+        """
+
+        x_reference = np.asarray(x_reference)
+        u_reference = np.asarray(u_reference)
+        n_x_samples, nx = x_reference.shape
+        n_u_samples, nu = u_reference.shape
+        if n_x_samples not in (n_u_samples + 1, n_u_samples):
+            raise AcadosWrapperException(
+                f"Number of state ({n_x_samples}) and input ({n_u_samples}) references"
+                " do not match"
+            )
+
+        # If not enough states in target sequence, append last state until required
+        # length is met
+        if n_x_samples < self.n_nodes + 1:
+            x_reference_data, x_reference = x_reference.copy(), np.empty(
+                (self.n_nodes + 1, nx)
+            )
+            u_reference_data, u_reference = u_reference.copy(), np.empty(
+                (self.n_nodes, nu)
+            )
+            x_reference[:n_x_samples, :] = x_reference_data
+            u_reference[:n_u_samples, :] = u_reference_data
+            x_reference[n_x_samples:, :] = x_reference_data[-1, :]
+            u_reference[n_u_samples:, :] = u_reference_data[-1, :]
+
+        for j in range(self.n_nodes):
+            ref = np.concatenate((x_reference[j, :], u_reference[j, :]))
+            self._solver.set(j, "yref", ref)
+        # the last MPC node has only a state reference but no input reference
+        self._solver.set(self.n_nodes, "yref", x_reference[self.n_nodes, :])
+
+    def set_reference_state(self, x_reference, u_reference):
+        ref = np.concatenate((np.asarray(x_reference), np.asarray(u_reference)))
+
+        for j in range(self.n_nodes):
+            self._solver.set(j, "yref", ref)
+        self._solver.set(self.n_nodes, "yref", ref[:-4])
+
+        return True
+
+    def optimize(self, quad_current_state):
+        # Set initial state. Add gp state if needed
+        x_init = np.asarray(quad_current_state)
+
+        # Set initial condition, equality constraint
+        self._solver.set(0, "lbx", x_init)
+        self._solver.set(0, "ubx", x_init)
+
+        # Solve OCP
+        self._solver.solve()
+
+        # Get u
+        w_opt_acados = np.empty((self.n_nodes, 4))
+        x_opt_acados = np.empty((self.n_nodes + 1, len(x_init)))
+        x_opt_acados[0, :] = self._solver.get(0, "x")
+        for i in range(self.n_nodes):
+            w_opt_acados[i, :] = self._solver.get(i, "u")
+            x_opt_acados[i + 1, :] = self._solver.get(i + 1, "x")
+
+        return w_opt_acados, x_opt_acados
 
 
 def get_reference_chunk(

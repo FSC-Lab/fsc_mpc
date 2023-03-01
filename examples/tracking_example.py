@@ -4,7 +4,7 @@
 # https://opensource.org/licenses/MIT
 
 from argparse import ArgumentParser
-from json import load
+from pathlib import Path
 from time import time
 
 import numpy as np
@@ -66,8 +66,7 @@ def parse_cli():
 
 def main():
     args = parse_cli()
-    with open(str(args.config), "r", encoding="utf-8") as fp:
-        config = load(fp)
+
     # Load the disturbances for the custom offline simulator.
 
     t_horizon = 1.0
@@ -79,9 +78,6 @@ def main():
 
     # Quadrotor simulator
     my_quad = quadrotor_model.QuadrotorModel(mass=1.0)
-
-    # Initialize quad MPC
-    quadrotor_mpc = acados_wrapper.make_acados_optimizer_from_config(config)
 
     # Recover some necessary variables from the MPC object
     reference_over_sampling = 5
@@ -115,6 +111,16 @@ def main():
         )
 
     trajectory_generator.check_trajectory(traj_ref, u_ref, t_ref)
+
+    config_file = Path(args.config)
+    # Initialize quad MPC
+    if config_file.exists():
+        quadrotor_mpc = acados_wrapper.AcadosWrapper.restore_from_file(str(config_file))
+    else:
+        model = acados_wrapper.make_quadrotor_model("quadrotor")
+        quadrotor_mpc = acados_wrapper.AcadosWrapper.make_new(
+            1.0, 10, model, json_file=str(config_file)
+        )
 
     # Set quad initial state equal to the initial reference trajectory state
     quad_current_state = traj_ref[0, :]
@@ -151,9 +157,7 @@ def main():
 
         # Set the reference for the OCP
         try:
-            acados_wrapper.set_reference_trajectory(
-                quadrotor_mpc,
-                n_mpc_nodes,
+            quadrotor_mpc.set_reference_trajectory(
                 x_reference=traj_ref_block,
                 u_reference=u_ref_block,
             )
@@ -164,9 +168,7 @@ def main():
 
         # Optimize control input to reach pre-set target
         t_opt_init = time()
-        u_optimized, _ = acados_wrapper.optimize(
-            quadrotor_mpc, n_mpc_nodes, quad_current_state
-        )
+        u_optimized, _ = quadrotor_mpc.optimize(quad_current_state)
         mean_opt_time += time() - t_opt_init
 
         # MPC applies only first optimized input to the plant
