@@ -197,22 +197,43 @@ def minimum_snap_trajectory_generator(
     return traj_ref, u_ref, t_ref
 
 
-def straight_trajectory(quad, discretization_dt, speed):
-    n = 3
-    pos_traj = np.zeros((n, 3))
-    pos_traj[:, 1] = np.linspace(-3, 3, n)
-    pos_traj[:, 2] = 1
-    att_traj = np.zeros_like(pos_traj)
+def straight_trajectory(quad, begin, end, z, discretization_dt, lin_acc, v_max):
+    position_diff = end - begin
+    distance = np.linalg.norm(position_diff)
+    heading_vector = position_diff[..., None] / distance
 
-    av_dist = np.mean(np.sqrt(np.sum(np.diff(pos_traj, axis=0) ** 2, axis=1)))
-    av_dt = av_dist / speed
+    ramp_up_t = v_max / lin_acc
 
-    poly_pos_traj = fit_multi_segment_polynomial_trajectory(
-        pos_traj.T, att_traj[:, -1].T
+    # Calculate simulation time to achieve desired maximum velocity with specified
+    # acceleration
+    t_total = distance / v_max
+
+    refs = {}
+    a = {}
+    refs["ramp_up"] = np.r_[0:ramp_up_t:discretization_dt]
+    a["ramp_up"] = lin_acc * np.ones_like(refs["ramp_up"])
+    t_cruise = t_total - 2 * ramp_up_t
+    refs["cruise"] = (
+        refs["ramp_up"][-1] + np.r_[0:t_cruise:discretization_dt] + discretization_dt
     )
-    traj, yaw, t_ref = get_full_traj(
-        poly_pos_traj, target_dt=av_dt, int_dt=discretization_dt
+    a["cruise"] = np.zeros_like(refs["cruise"])
+    refs["ramp_down"] = (
+        refs["cruise"][-1] + np.r_[0:ramp_up_t:discretization_dt] + discretization_dt
     )
+    a["ramp_down"] = -lin_acc * np.ones_like(refs["ramp_down"])
+    t_ref = np.concatenate(tuple(refs.values()))
+    a_vec = np.concatenate(tuple(a.values()))
+    v_vec = np.cumsum(a_vec) * discretization_dt
+    d_vec = np.cumsum(v_vec) * discretization_dt
+
+    n = t_ref.size
+    traj = np.zeros((4, 3, n))
+    traj[0, 0:2, :] = begin[..., None] + heading_vector * d_vec
+    traj[0, 2, :] = z
+    traj[1, 0:2, :] = heading_vector * v_vec
+    traj[2, 0:2, :] = heading_vector * a_vec
+    yaw = np.zeros((2, n))
+    yaw[0, :] = np.arctan2(position_diff[1], position_diff[0])
 
     reference_traj, t_ref, reference_u = minimum_snap_trajectory_generator(
         traj, yaw, t_ref, quad
@@ -415,21 +436,12 @@ def lemniscate_trajectory(
     :return:
     """
 
-    # Apply map limits to radius
-    map_limits = None  # a= load_map_limits_from_file(map_name)
-    if map_limits is not None:
-        x_max_range = map_limits["x"][1] - map_limits["x"][0]
-        y_max_range = map_limits["y"][1] - map_limits["y"][0]
-
-        max_radius = min(x_max_range / 2, y_max_range / 2)
-
-        radius = min(radius, max_radius)
-
     assert z > 0
 
     ramp_up_t = 2  # s
 
-    # Calculate simulation time to achieve desired maximum velocity with specified acceleration
+    # Calculate simulation time to achieve desired maximum velocity with specified
+    # acceleration
     t_total = 2 * v_max / lin_acc + 2 * ramp_up_t
 
     # Transform to angular acceleration
