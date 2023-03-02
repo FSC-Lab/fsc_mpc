@@ -19,12 +19,10 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <http://www.gnu.org/licenses/>.
 
-from math import isclose
 
 import numpy as np
 from numpy.typing import ArrayLike
 
-from quadrotor_mpc.acados_wrapper import AcadosWrapperException
 from quadrotor_mpc.rotation import (
     quaternion_conjugate,
     quaternion_product,
@@ -34,119 +32,6 @@ from quadrotor_mpc.rotation import (
 )
 
 from .trajectory_generator import fit_multi_segment_polynomial_trajectory, get_full_traj
-
-
-def check_trajectory(
-    trajectory: ArrayLike, u_ref: ArrayLike, t_ref: ArrayLike, frame="W2B"
-) -> None:
-    """Checks the integrity of a trajectory produced by the minimum snap trajectory
-    generator
-
-    Parameters
-    ----------
-    trajectory : ArrayLike
-        A N-by-10 array containing N trajectory points stacked row-wise
-    u_ref : ArrayLike
-        A N-by-4 array containing N inputs stacked row-wise
-    t_ref : ArrayLike
-        A N-element array containing N time references
-    frame : str, optional
-        Toggles whether the quaternion trajectory should be transformed into the
-        world-to-body form, and whether velocity trajectory should be transformed into
-        the world frame, by default "W2B"
-
-    Raises
-    ------
-    AcadosWrapperException
-        When the velocity trajectory does not match the numerical derivative between
-        corresponding position trajectory points
-    AcadosWrapperException
-        When the attitude trajectory contains non-normal quaternions
-    AcadosWrapperException
-        When the attitude trajectory does not match the thrusting orientations along the
-        thrust trajectory
-    AcadosWrapperException
-        When the angular velocity trajectory does not match the numerical derivative
-        between corresponding attitude trajectory points
-    """
-    # NO np.asarray! Make copies such that the checks will not mutate the original
-    # arrays
-    trajectory = np.array(trajectory)
-    t_ref = np.array(t_ref)
-    u_ref = np.array(u_ref)
-    if frame == "W2B":
-        for i in range(trajectory.shape[0]):
-            trajectory[i, 3:7] = quaternion_conjugate(trajectory[i, 3:7])
-            trajectory[i, 7:10] = quaternion_rotate_point(
-                trajectory[i, 3:7], trajectory[i, 7:10]
-            )
-
-    dt = np.expand_dims(np.gradient(t_ref, axis=0), axis=1)
-    numeric_derivative = np.gradient(trajectory, axis=0) / dt
-
-    errors = np.zeros((dt.shape[0], 3))
-
-    num_bodyrates = []
-
-    for i in range(dt.shape[0]):
-        # 1) check if velocity is consistent with position
-        numeric_velocity = numeric_derivative[i, 0:3]
-        analytic_velocity = trajectory[i, 7:10]
-        errors[i, 0] = np.linalg.norm(numeric_velocity - analytic_velocity)
-        if not np.allclose(analytic_velocity, numeric_velocity, atol=1e-2, rtol=1e-2):
-            raise AcadosWrapperException(
-                f"inconsistent linear velocity {numeric_velocity} {analytic_velocity}"
-            )
-
-        # 2) check if attitude is consistent with acceleration
-        gravity = 9.81
-        numeric_thrust = numeric_derivative[i, 7:10] + np.array([0.0, 0.0, gravity])
-        numeric_thrust = numeric_thrust / np.linalg.norm(numeric_thrust)
-        analytic_attitude = trajectory[i, 3:7]
-        qnorm = np.linalg.norm(analytic_attitude)
-        if not isclose(qnorm, 1.0):
-            raise AcadosWrapperException(
-                f"quaternion does not have unit norm! {analytic_attitude} {qnorm}"
-            )
-
-        e_z = np.array([0.0, 0.0, 1.0])
-        q_w = 1.0 + np.dot(e_z, numeric_thrust)
-        q_xyz = np.cross(e_z, numeric_thrust)
-        numeric_attitude = 0.5 * np.r_[q_xyz, q_w]
-        numeric_attitude = numeric_attitude / np.linalg.norm(numeric_attitude)
-        # the two attitudes can only differ in yaw --> check x,y component
-        q_diff = quaternion_product(
-            quaternion_conjugate(analytic_attitude), numeric_attitude
-        )
-        errors[i, 1] = np.linalg.norm(q_diff[0:2])
-        if not np.allclose(
-            q_diff[0:2],
-            np.zeros(
-                2,
-            ),
-            atol=1e-3,
-            rtol=1e-3,
-        ):
-            raise AcadosWrapperException(
-                "Attitude and acceleration do not match!"
-                f" {analytic_attitude} {numeric_attitude} {q_diff}"
-            )
-
-        # 3) check if bodyrates agree with attitude difference
-        numeric_bodyrates = (
-            2.0
-            * quaternion_product(
-                quaternion_conjugate(trajectory[i, 3:7]), numeric_derivative[i, 3:7]
-            )[:3]
-        )
-        num_bodyrates.append(numeric_bodyrates)
-        analytic_bodyrates = u_ref[i, 1:4]
-        errors[i, 2] = np.linalg.norm(numeric_bodyrates - analytic_bodyrates)
-        if not np.allclose(numeric_bodyrates, analytic_bodyrates, atol=0.05, rtol=0.05):
-            raise AcadosWrapperException(
-                "inconsistent angular velocity "
-                f"{numeric_bodyrates} {analytic_bodyrates}"
-            )
 
 
 def minimum_snap_trajectory_generator(

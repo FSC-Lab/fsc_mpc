@@ -110,8 +110,6 @@ def main():
             f"Unknown trajectory {args.trajectory}. Options are `lemniscate` and `loop`"
         )
 
-    trajectory_generator.check_trajectory(traj_ref, u_ref, t_ref)
-
     codegen_dir = Path(args.codegen_dir)
     # Initialize quad MPC
     if codegen_dir.exists():
