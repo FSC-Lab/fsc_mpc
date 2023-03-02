@@ -4,9 +4,11 @@
 # https://opensource.org/licenses/MIT
 
 import numpy as np
+import numba
 from numpy.typing import ArrayLike
 
 
+@numba.njit
 def quaternion_normalize(q):
     """
     Normalizes a quaternion to be unit modulus.
@@ -14,10 +16,11 @@ def quaternion_normalize(q):
     :return: the unit quaternion in the same data format as the original one
     """
 
-    q_norm = np.sqrt(np.sum(q**2))
+    q_norm = np.sqrt(q @ q)
     return 1 / q_norm * q
 
 
+@numba.njit
 def fast_cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Fast cross product in 3 dimensions that does not broadcast or handle batch
     operation and does the minimum amount of checks
@@ -43,6 +46,7 @@ def fast_cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     )
 
 
+@numba.njit
 def quaternion_rotate_point(q: ArrayLike, v: ArrayLike) -> np.ndarray:
     """Rotates a 3-vector `v` by a rotation represented by the unit quaternion `v`
 
@@ -111,6 +115,7 @@ def quaternion_to_rotation_matrix(q: ArrayLike) -> np.ndarray:
     return res
 
 
+@numba.njit
 def quaternion_product(a: ArrayLike, b: ArrayLike) -> np.ndarray:
     """Calculates the product of quaternion `a` and `b` using Hamiltonian quaternion
     product rules.
@@ -188,6 +193,7 @@ def undo_quaternion_flip(q_past, q_current):
     return q_current
 
 
+@numba.njit
 def quaternion_conjugate(q: ArrayLike) -> np.ndarray:
     """Computes the conjugate of the quaternion `q`. This operation is equivalent to
     taking the multiplication inverse if `q` is normalized
