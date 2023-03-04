@@ -1,5 +1,7 @@
 addpath('controller/trajectories/');
 addpath('controller/model/');
+
+setup ~/src/acados;
 %
 warning('off', 'all');
 if exist(sprintf('%s/build', pwd), 'dir')
