@@ -28,7 +28,7 @@ thrust = squeeze(traj_derivatives(3, :, :)).' + repmat([0, 0, GRAV_ACCEL], len_t
 % Compute body axes
 z_b = thrust ./ vecnorm(thrust, 2, 2);
 
-yawing = ~isempty(yaw_derivatives);
+yawing = ~isempty(yaw_derivatives) && any(abs(yaw_derivatives(1, :)) > 1e-6); 
 
 rate = zeros(len_traj, 3);
 f_t = quad.mass * sum(z_b .* thrust, 2);
