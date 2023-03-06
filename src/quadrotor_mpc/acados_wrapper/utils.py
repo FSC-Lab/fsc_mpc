@@ -15,6 +15,7 @@ def run_simulation(
     solver: acados_wrapper.AcadosWrapper,
     trajectory: trajectory_generator.trajectories.Trajectory,
     reference_over_sampling: int,
+    profile_data=False,
 ):
     simulation_dt = 5e-4
     # Set quad initial state equal to the initial reference trajectory state
@@ -26,15 +27,14 @@ def run_simulation(
     # Sliding reference trajectory initial index
     current_idx = 0
 
-    # Measure the MPC optimization time
-    mean_opt_time = 0.0
-
     # Measure total simulation time
     total_sim_time = 0.0
 
     print("\nRunning simulation...")
     tout = [time.time()]
     yout = {"states": [], "inputs": []}
+    if profile_data:
+        yout["solve_time"] = [0.0]
     for current_idx in tqdm.tqdm(range(len(trajectory))):
 
         quad_current_state = model.state
@@ -58,8 +58,11 @@ def run_simulation(
             ) from exc
 
         # Optimize control input to reach pre-set target
+        t1 = time.time()
         u_optimized, _ = solver.optimize(quad_current_state)
-        tout.append(time.time())
+        if profile_data:
+            yout["solve_time"].append(time.time() - t1)
+        tout.append(t1)
         # MPC applies only first optimized input to the plant
         u_setpoint = u_optimized[0, :]
         yout["inputs"].append(u_setpoint)
@@ -76,6 +79,4 @@ def run_simulation(
     tout = np.asarray(tout)
     yout = {k: np.asarray(v) for k, v in yout.items()}
 
-    # Average elapsed time per optimization
-    mean_opt_time = mean_opt_time / current_idx * 1000
     return tout, yout

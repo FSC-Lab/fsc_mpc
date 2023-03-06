@@ -130,7 +130,7 @@ def main():
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
     tout, yout = acados_wrapper.utils.run_simulation(
-        model, solver, trajectory, reference_over_sampling
+        model, solver, trajectory, reference_over_sampling, profile_data=True
     )
     tracking_rmse = np.mean(
         np.sqrt(np.sum((trajectory.states[:, :3] - yout["states"][:, :3]) ** 2, axis=1))
@@ -158,7 +158,8 @@ def main():
     )
 
     print(f"\n{'SIMULATION RESULTS'::^81s}\n")
-    # print(f"Mean optimization time: {mean_opt_time:.3f} ms")
+    mean_optimization_time = yout["solve_time"].mean()
+    print(f"Mean optimization time: {mean_optimization_time:.3f} ms")
     print(f"Tracking RMSE: {tracking_rmse:.4f} m\n")
 
 
