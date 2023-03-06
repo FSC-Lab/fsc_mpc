@@ -31,7 +31,44 @@ from quadrotor_mpc.rotation import (
     undo_quaternion_flip,
 )
 
-from .trajectory_generator import fit_multi_segment_polynomial_trajectory, get_full_traj
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Trajectory:
+    states: np.ndarray
+    inputs: np.ndarray
+    time: np.ndarray
+
+    def __len__(self):
+        return self.time.size
+
+    @property
+    def time_interval(self):
+        return np.diff(self.time)
+
+    def get_reference_chunk(self, idx: int, n_nodes: int, reference_over_sampling: int):
+        # Dense references
+        ref_traj_chunk = self.states[
+            idx : idx + (n_nodes + 1) * reference_over_sampling, :
+        ]
+        ref_u_chunk = self.inputs[idx : idx + n_nodes * reference_over_sampling, :]
+
+        # Indices for down-sampling the reference to number of MPC nodes
+        downsample_ref_ind = np.arange(
+            0,
+            min(reference_over_sampling * (n_nodes + 1), ref_traj_chunk.shape[0]),
+            reference_over_sampling,
+            dtype=int,
+        )
+
+        # Sparser references (same dt as node separation)
+        ref_traj_chunk = ref_traj_chunk[downsample_ref_ind, :]
+        ref_u_chunk = ref_u_chunk[
+            downsample_ref_ind[: max(len(downsample_ref_ind) - 1, 1)], :
+        ]
+
+        return ref_traj_chunk, ref_u_chunk
 
 
 def minimum_snap_trajectory_generator(
@@ -194,7 +231,7 @@ def minimum_snap_trajectory_generator(
     traj_ref[:, 0] -= traj_ref[0, 0]
     traj_ref[:, 1] -= traj_ref[0, 1]
 
-    return traj_ref, u_ref, t_ref
+    return Trajectory(traj_ref, u_ref, t_ref)
 
 
 def straight_trajectory(quad, begin, end, z, discretization_dt, lin_acc, v_max):
@@ -213,6 +250,8 @@ def straight_trajectory(quad, begin, end, z, discretization_dt, lin_acc, v_max):
     refs["ramp_up"] = np.r_[0:ramp_up_t:discretization_dt]
     a["ramp_up"] = lin_acc * np.ones_like(refs["ramp_up"])
     t_cruise = t_total - 2 * ramp_up_t
+    if t_cruise < 0.0:
+        raise RuntimeError("Not enough time to accelerate to v_max and cruise!")
     refs["cruise"] = (
         refs["ramp_up"][-1] + np.r_[0:t_cruise:discretization_dt] + discretization_dt
     )
@@ -235,10 +274,7 @@ def straight_trajectory(quad, begin, end, z, discretization_dt, lin_acc, v_max):
     yaw = np.zeros((2, n))
     yaw[0, :] = np.arctan2(position_diff[1], position_diff[0])
 
-    reference_traj, t_ref, reference_u = minimum_snap_trajectory_generator(
-        traj, yaw, t_ref, quad
-    )
-    return reference_traj, t_ref, reference_u
+    return minimum_snap_trajectory_generator(traj, yaw, t_ref, quad)
 
 
 def loop_trajectory(

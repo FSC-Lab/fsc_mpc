@@ -4,3 +4,4 @@ from .acados_wrapper import (
     AcadosWrapperException,
     AcadosWrapper,
 )
+from . import utils
