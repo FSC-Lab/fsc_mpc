@@ -20,6 +20,8 @@
 # this program. If not, see <http://www.gnu.org/licenses/>.
 
 
+from dataclasses import dataclass
+
 import numpy as np
 from numpy.typing import ArrayLike
 
@@ -30,8 +32,6 @@ from quadrotor_mpc.rotation import (
     rotation_matrix_to_quaternion,
     undo_quaternion_flip,
 )
-
-from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
