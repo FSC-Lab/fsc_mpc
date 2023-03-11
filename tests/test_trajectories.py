@@ -3,8 +3,6 @@
 # This software is released under the MIT License.
 # https://opensource.org/licenses/MIT
 
-import itertools
-
 import numpy as np
 import pytest
 from numpy.typing import ArrayLike
@@ -18,7 +16,7 @@ from quadrotor_mpc.rotation import (
 
 
 def check_trajectory(
-    trajectory: ArrayLike, u_ref: ArrayLike, t_ref: ArrayLike, frame="W2B"
+    states: ArrayLike, inputs: ArrayLike, time: ArrayLike, frame="W2B"
 ) -> None:
     """Checks the integrity of a trajectory produced by the minimum snap trajectory
     generator
@@ -40,18 +38,16 @@ def check_trajectory(
 
     # NO np.asarray! Make copies such that the checks will not mutate the original
     # arrays
-    trajectory = np.array(trajectory)
-    t_ref = np.array(t_ref)
-    u_ref = np.array(u_ref)
+    states = np.array(states)
+    time = np.array(time)
+    inputs = np.array(inputs)
     if frame == "W2B":
-        for i in range(trajectory.shape[0]):
-            trajectory[i, 3:7] = quaternion_conjugate(trajectory[i, 3:7])
-            trajectory[i, 7:10] = quaternion_rotate_point(
-                trajectory[i, 3:7], trajectory[i, 7:10]
-            )
+        for i in range(states.shape[0]):
+            states[i, 3:7] = quaternion_conjugate(states[i, 3:7])
+            states[i, 7:10] = quaternion_rotate_point(states[i, 3:7], states[i, 7:10])
 
-    dt = np.expand_dims(np.gradient(t_ref, axis=0), axis=1)
-    numeric_derivative = np.gradient(trajectory, axis=0) / dt
+    dt = np.expand_dims(np.gradient(time, axis=0), axis=1)
+    numeric_derivative = np.gradient(states, axis=0) / dt
 
     errors = np.zeros((dt.shape[0], 3))
 
@@ -60,7 +56,7 @@ def check_trajectory(
     for i in range(dt.shape[0]):
         # 1) check if velocity is consistent with position
         numeric_velocity = numeric_derivative[i, 0:3]
-        analytic_velocity = trajectory[i, 7:10]
+        analytic_velocity = states[i, 7:10]
         errors[i, 0] = np.linalg.norm(numeric_velocity - analytic_velocity)
         assert np.allclose(analytic_velocity, numeric_velocity, atol=1e-2, rtol=1e-2)
 
@@ -68,7 +64,7 @@ def check_trajectory(
         gravity = 9.81
         numeric_thrust = numeric_derivative[i, 7:10] + np.array([0.0, 0.0, gravity])
         numeric_thrust = numeric_thrust / np.linalg.norm(numeric_thrust)
-        analytic_attitude = trajectory[i, 3:7]
+        analytic_attitude = states[i, 3:7]
         qnorm = np.linalg.norm(analytic_attitude)
         assert np.isclose(qnorm, 1.0)
 
@@ -95,69 +91,53 @@ def check_trajectory(
         numeric_bodyrates = (
             2.0
             * quaternion_product(
-                quaternion_conjugate(trajectory[i, 3:7]), numeric_derivative[i, 3:7]
+                quaternion_conjugate(states[i, 3:7]), numeric_derivative[i, 3:7]
             )[:3]
         )
         num_bodyrates.append(numeric_bodyrates)
-        analytic_bodyrates = u_ref[i, 1:4]
+        analytic_bodyrates = inputs[i, 1:4]
         errors[i, 2] = np.linalg.norm(numeric_bodyrates - analytic_bodyrates)
         assert np.allclose(numeric_bodyrates, analytic_bodyrates, atol=0.05, rtol=0.05)
 
 
-@pytest.fixture(name="trajectories_test_data")
+@pytest.fixture(name="quad")
 def quad_fixture():
-    trajectory_radius_range = np.linspace(10, 40, 4)
-    acceleration_range = np.linspace(0.5, 1.5, 4)
-    max_speed_range = np.linspace(5.0, 15.0, 4)
-    return quadrotor_model.QuadrotorModel(1.0), (
-        trajectory_radius_range,
-        acceleration_range,
-        max_speed_range,
+    return quadrotor_model.QuadrotorModel(1.0)
+
+
+@pytest.mark.parametrize("trajectory_radius", np.linspace(10, 40, 4))
+@pytest.mark.parametrize("acceleration", np.linspace(0.5, 1.5, 4))
+@pytest.mark.parametrize("max_speed", np.linspace(5.0, 15.0, 4))
+def test_loop_trajectory(quad, trajectory_radius, acceleration, max_speed):
+    control_period = 0.01
+
+    trajectory = trajectory_generator.loop_trajectory(
+        quad,
+        control_period,
+        radius=trajectory_radius,
+        z=1,
+        lin_acc=acceleration,
+        clockwise=True,
+        yawing=False,
+        v_max=max_speed,
     )
 
+    check_trajectory(**vars(trajectory))
 
-def test_loop_trajectory(trajectories_test_data):
+
+@pytest.mark.parametrize("trajectory_radius", np.linspace(10, 40, 4))
+@pytest.mark.parametrize("acceleration", np.linspace(0.5, 1.5, 4))
+@pytest.mark.parametrize("max_speed", np.linspace(5.0, 15.0, 4))
+def test_lemniscate_trajectory(quad, trajectory_radius, acceleration, max_speed):
     control_period = 0.01
-    quad, (
-        trajectory_radius_range,
-        acceleration_range,
-        max_speed_range,
-    ) = trajectories_test_data
 
-    for trajectory_radius, acceleration, max_speed in itertools.product(
-        trajectory_radius_range, acceleration_range, max_speed_range
-    ):
-        traj_ref, u_ref, t_ref = trajectory_generator.loop_trajectory(
-            quad,
-            control_period,
-            radius=trajectory_radius,
-            z=1,
-            lin_acc=acceleration,
-            clockwise=True,
-            yawing=False,
-            v_max=max_speed,
-        )
+    trajectory = trajectory_generator.lemniscate_trajectory(
+        quad,
+        control_period,
+        radius=trajectory_radius,
+        z=1,
+        lin_acc=acceleration,
+        v_max=max_speed,
+    )
 
-        check_trajectory(traj_ref, u_ref, t_ref)
-
-
-def test_lemniscate_trajectory(trajectories_test_data):
-    control_period = 0.01
-    quad, (
-        trajectory_radius_range,
-        acceleration_range,
-        max_speed_range,
-    ) = trajectories_test_data
-    for trajectory_radius, acceleration, max_speed in itertools.product(
-        trajectory_radius_range, acceleration_range, max_speed_range
-    ):
-        traj_ref, u_ref, t_ref = trajectory_generator.lemniscate_trajectory(
-            quad,
-            control_period,
-            radius=trajectory_radius,
-            z=1,
-            lin_acc=acceleration,
-            v_max=max_speed,
-        )
-
-        check_trajectory(traj_ref, u_ref, t_ref)
+    check_trajectory(**vars(trajectory))
