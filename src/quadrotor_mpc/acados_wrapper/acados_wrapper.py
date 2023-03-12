@@ -100,13 +100,11 @@ class AcadosWrapper:
             raise AcadosWrapperException(
                 "Number of input weights does not match the input dimension 4"
             )
-        ocp.cost.W = np.diag(np.concatenate((q_cost, r_cost)))
+        ocp.cost.W = np.diag(np.r_[q_cost, r_cost])
         ocp.cost.W_e = np.diag(q_cost)
 
-        ocp.cost.Vx = np.zeros((cls._ny, cls._nx))
-        ocp.cost.Vx[: cls._nx, : cls._nx] = np.eye(cls._nx)
-        ocp.cost.Vu = np.zeros((cls._ny, cls._nu))
-        ocp.cost.Vu[-4:, -4:] = np.eye(cls._nu)
+        ocp.cost.Vx = np.r_[np.eye(cls._nx), np.zeros((cls._nu, cls._nx))]
+        ocp.cost.Vu = np.r_[np.zeros((cls._nx, cls._nu)), np.eye(cls._nu)]
         ocp.cost.Vx_e = np.eye(cls._nx)
         # Initial reference trajectory (will be overwritten)
         ocp.cost.yref = np.concatenate((DEFAULT_STATE, DEFAULT_INPUT))
@@ -201,19 +199,17 @@ class AcadosWrapper:
         # If not enough states in target sequence, append last state until required
         # length is met
         if n_x_samples < self.n_nodes + 1:
-            x_reference_data, x_reference = x_reference.copy(), np.empty(
-                (self.n_nodes + 1, nx)
+            x_reference = np.pad(
+                x_reference, ((0, self.n_nodes + 1 - n_x_samples), (0, 0)), "edge"
             )
-            u_reference_data, u_reference = u_reference.copy(), np.empty(
-                (self.n_nodes, nu)
+            u_reference = np.pad(
+                u_reference, ((0, self.n_nodes - n_u_samples), (0, 0)), "edge"
             )
-            x_reference[:n_x_samples, :] = x_reference_data
-            u_reference[:n_u_samples, :] = u_reference_data
-            x_reference[n_x_samples:, :] = x_reference_data[-1, :]
-            u_reference[n_u_samples:, :] = u_reference_data[-1, :]
 
+        ref = np.empty(self._ny)
         for j in range(self.n_nodes):
-            ref = np.concatenate((x_reference[j, :], u_reference[j, :]))
+            ref[0 : self._nx] = x_reference[j, :]
+            ref[self._nx :] = u_reference[j, :]
             self._solver.set(j, "yref", ref)
         # the last MPC node has only a state reference but no input reference
         self._solver.set(self.n_nodes, "yref", x_reference[self.n_nodes, :])
@@ -229,14 +225,10 @@ class AcadosWrapper:
 
     def optimize(self, quad_current_state):
         # Set initial state. Add gp state if needed
-        x_init = np.asarray(quad_current_state)
-
-        # Set initial condition, equality constraint
-        self._solver.set(0, "lbx", x_init)
-        self._solver.set(0, "ubx", x_init)
+        x_init = np.asarray(quad_current_state, dtype=np.double)
 
         # Solve OCP
-        self._solver.solve()
+        self._solver.solve_for_x0(x_init)
 
         # Get u
         w_opt_acados = np.empty((self.n_nodes, 4))
