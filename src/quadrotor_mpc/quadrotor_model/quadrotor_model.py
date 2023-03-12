@@ -19,10 +19,10 @@ from quadrotor_mpc.rotation import (
 )
 
 DEFAULT_STATE = np.array(
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0], dtype=np.double
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0], dtype=np.float64
 )
 
-DEFAULT_INPUT = np.array([9.81, 0.0, 0.0, 0.0], dtype=np.double)
+DEFAULT_INPUT = np.array([9.81, 0.0, 0.0, 0.0], dtype=np.float64)
 
 
 class QuadrotorModel:

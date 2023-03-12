@@ -15,13 +15,13 @@ from numpy.typing import ArrayLike
 from quadrotor_mpc.quadrotor_model import DEFAULT_INPUT, DEFAULT_STATE, QuadrotorModel
 
 DEFAULT_Q_COST = np.array(
-    [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05], dtype=np.double
+    [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05], dtype=np.float64
 )
 
-DEFAULT_R_COST = np.array([0.1, 0.1, 0.1, 0.1], dtype=np.double)
+DEFAULT_R_COST = np.array([0.1, 0.1, 0.1, 0.1], dtype=np.float64)
 
-DEFAULT_LB = np.array([0.0, -8.0, -8.0, -8.0], dtype=np.double)
-DEFAULT_UB = np.array([80.0, 8.0, 8.0, 8.0], dtype=np.double)
+DEFAULT_LB = np.array([0.0, -8.0, -8.0, -8.0], dtype=np.float64)
+DEFAULT_UB = np.array([80.0, 8.0, 8.0, 8.0], dtype=np.float64)
 
 
 class AcadosWrapperException(Exception):
@@ -81,21 +81,21 @@ class AcadosWrapper:
         # Create OCP object to formulate the optimization
         ocp = AcadosOcp()
         ocp.model = model
-        cls._nx = model.x.size()[0]  # type: ignore
-        cls._nu = model.u.size()[0]  # type: ignore
+        cls._nx = cs.MX(model.x).size(0)
+        cls._nu = cs.MX(model.u).size(0)
         cls._ny = cls._nx + cls._nu
         ocp.dims.N = n_nodes
         ocp.solver_options.tf = t_horizon
 
         ocp.cost.cost_type = "LINEAR_LS"
         ocp.cost.cost_type_e = "LINEAR_LS"
-        q_cost = np.asarray(q_cost, dtype=np.double)
+        q_cost = np.asarray(q_cost, dtype=np.float64).ravel()
         if q_cost.size != cls._nx:
             raise AcadosWrapperException(
                 "Number of state weights does not match the state dimension 10"
             )
 
-        r_cost = np.asarray(r_cost, dtype=np.double)
+        r_cost = np.asarray(r_cost, dtype=np.float64).ravel()
         if r_cost.size != cls._nu:
             raise AcadosWrapperException(
                 "Number of input weights does not match the input dimension 4"
@@ -114,8 +114,8 @@ class AcadosWrapper:
         ocp.constraints.x0 = DEFAULT_STATE
 
         # Set constraints
-        lbu = np.asarray(lbu, dtype=np.double)
-        ubu = np.asarray(ubu, dtype=np.double)
+        lbu = np.asarray(lbu, dtype=np.float64)
+        ubu = np.asarray(ubu, dtype=np.float64)
         if lbu.size != cls._nu or ubu.size != cls._nu:
             raise AcadosWrapperException(
                 "Number of input bounds does not match the input dimension 4"
@@ -225,7 +225,7 @@ class AcadosWrapper:
 
     def optimize(self, quad_current_state):
         # Set initial state. Add gp state if needed
-        x_init = np.asarray(quad_current_state, dtype=np.double)
+        x_init = np.asarray(quad_current_state, dtype=np.float64)
 
         # Solve OCP
         self._solver.solve_for_x0(x_init)

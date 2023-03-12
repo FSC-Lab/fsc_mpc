@@ -77,6 +77,6 @@ def run_simulation(
             model.model_update(u_setpoint, simulation_dt)
 
     tout = np.asarray(tout)
-    yout = {k: np.asarray(v) for k, v in yout.items()}
+    yout = {k: np.asarray(v, dtype=np.float64) for k, v in yout.items()}
 
     return tout, yout

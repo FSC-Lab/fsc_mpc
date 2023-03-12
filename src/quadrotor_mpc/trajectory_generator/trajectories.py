@@ -23,7 +23,7 @@
 from dataclasses import dataclass
 
 import numpy as np
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 from quadrotor_mpc.rotation import (
     quaternion_conjugate,
@@ -36,9 +36,9 @@ from quadrotor_mpc.rotation import (
 
 @dataclass(frozen=True)
 class Trajectory:
-    states: np.ndarray
-    inputs: np.ndarray
-    time: np.ndarray
+    states: NDArray[np.float64]
+    inputs: NDArray[np.float64]
+    time: NDArray[np.float64]
 
     def __len__(self):
         return self.time.size
