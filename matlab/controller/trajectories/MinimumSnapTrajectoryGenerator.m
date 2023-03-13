@@ -1,4 +1,4 @@
-function [traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj_derivatives, yaw_derivatives, t_ref, quad)
+function [traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj_derivatives, yaw_derivatives, t_ref, varargin)
 %     Follows the Minimum Snap Trajectory paper to generate a full trajectory given the position reference and its
 %     derivatives, and the yaw trajectory and its derivatives.
 %
@@ -17,6 +17,16 @@ function [traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj_derivati
 %         attitude_quaternion_wxyz, velocity_xyz, body_rate_xyz.
 %         - N array of reference timestamps. The same as in the input
 %         - Nx4 array of reference controls, corresponding to the four motors of the quadrotor.
+p = inputParser;
+addRequired(p, 'traj_derivatives');
+addRequired(p, 'yaw_derivative');
+addRequired(p, 't_ref');
+addParameter(p, 'QuadMass', 1.0);
+addParameter(p, 'StartAtZero', false);
+addParameter(p, 'UseBodyFrameDynamics', false);
+
+parse(p, traj_derivatives, yaw_derivatives, t_ref, varargin{:});
+
 proj_V = [eye(3), zeros(3, 1)];
 GRAV_ACCEL = 9.81;
 
@@ -31,7 +41,7 @@ z_b = thrust ./ vecnorm(thrust, 2, 2);
 yawing = ~isempty(yaw_derivatives) && any(abs(yaw_derivatives(1, :)) > 1e-6); 
 
 rate = zeros(len_traj, 3);
-f_t = quad.mass * sum(z_b .* thrust, 2);
+f_t = p.Results.QuadMass * sum(z_b .* thrust, 2);
 if yawing
     error("Not implemented");
     %         % yaw is defined as the projection of the body-x axis on the horizontal plane
@@ -108,7 +118,7 @@ u_ref = [f_t, rate];
 full_pos = squeeze(traj_derivatives(1, :, :)).';
 full_vel = squeeze(traj_derivatives(2, :, :)).';
 
-if quad.frame == "W2B"
+if p.Results.UseBodyFrameDynamics
     q(:, 1:3) = -q(:, 1:3);
     for i = 1:len_traj
         full_vel(i, :) = QuaternionRotatePoint(q(i, :), full_vel(i, :));
@@ -117,6 +127,7 @@ end
 traj_ref = [full_pos, q, full_vel];
 
 % Locate starting point right at x=0 and y=0.
-traj_ref(:, 1:2) = traj_ref(:, 1:2) - traj_ref(1, 1:2);
-
+if p.Results.StartAtZero
+    traj_ref(:, 1:2) = traj_ref(:, 1:2) - traj_ref(1, 1:2);
+end
 end
