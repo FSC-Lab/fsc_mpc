@@ -49,6 +49,7 @@ acados_opts.set('shooting_nodes', shooting_nodes);
 acados_opts.set('nlp_solver', 'sqp_rti');
 acados_opts.set('sim_method', 'erk');
 acados_opts.set('qp_solver', 'full_condensing_hpipm');
+acados_opts.set('output_dir', sprintf('build/%s', model_name));
 
 ocp = acados_ocp(acados_model, acados_opts);
 
