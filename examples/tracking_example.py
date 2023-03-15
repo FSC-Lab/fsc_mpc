@@ -79,9 +79,9 @@ def main():
     reference_over_sampling = 5
     control_period = t_horizon / (n_mpc_nodes * reference_over_sampling)
 
+    params = {"body_frame_coordinates": True, "quadrotor_mass": model.mass}
     if args.trajectory == "loop":
         trajectory = trajectory_generator.loop_trajectory(
-            model,
             control_period,
             radius=args.trajectory_radius,
             z=1,
@@ -89,16 +89,17 @@ def main():
             clockwise=True,
             yawing=False,
             v_max=args.max_speed,
+            trajectory_kw=params,
         )
 
     elif args.trajectory == "lemniscate":
         trajectory = trajectory_generator.lemniscate_trajectory(
-            model,
             control_period,
             radius=args.trajectory_radius,
             z=1,
             lin_acc=args.acceleration,
             v_max=args.max_speed,
+            trajectory_kw=params,
         )
     elif args.trajectory == "straight":
         trajectory = trajectory_generator.straight_trajectory(
@@ -109,6 +110,7 @@ def main():
             control_period,
             lin_acc=args.acceleration,
             v_max=args.max_speed,
+            trajectory_kw=params,
         )
 
     else:

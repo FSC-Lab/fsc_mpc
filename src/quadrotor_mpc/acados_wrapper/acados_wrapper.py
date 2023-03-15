@@ -81,8 +81,8 @@ class AcadosWrapper:
         # Create OCP object to formulate the optimization
         ocp = AcadosOcp()
         ocp.model = model
-        cls._nx = cs.MX(model.x).size(0)
-        cls._nu = cs.MX(model.u).size(0)
+        cls._nx = cs.MX(model.x).size(1)
+        cls._nu = cs.MX(model.u).size(1)
         cls._ny = cls._nx + cls._nu
         ocp.dims.N = n_nodes
         ocp.solver_options.tf = t_horizon

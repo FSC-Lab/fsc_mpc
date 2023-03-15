@@ -75,8 +75,8 @@ def minimum_snap_trajectory_generator(
     traj_derivatives: ArrayLike,
     yaw_derivatives: ArrayLike,
     t_ref: ArrayLike,
-    quad,
-    frame="W2B",
+    quadrotor_mass: float = 1.0,
+    body_frame_coordinates: bool = True,
 ):
     """
     Follows the Minimum Snap Trajectory paper to generate a full trajectory given the position reference and its
@@ -127,7 +127,7 @@ def minimum_snap_trajectory_generator(
     rate = np.zeros((len_traj, 3))
     f_t = np.zeros((len_traj, 1))
     for i in range(len_traj):
-        f_t[i, 0] = quad.mass * z_b[i].dot(thrust[i, :].T)
+        f_t[i, 0] = quadrotor_mass * z_b[i].dot(thrust[i, :].T)
 
     if yawing:
         # yaw is defined as the projection of the body-x axis on the horizontal plane
@@ -161,7 +161,7 @@ def minimum_snap_trajectory_generator(
         for i in range(len_traj):
             a_proj[i, 0] = z_b[i].dot(traj_derivatives[3, :, i])
 
-        h_omega = quad.mass / f_t * (traj_derivatives[3, :, :].T - a_proj * z_b)
+        h_omega = quadrotor_mass / f_t * (traj_derivatives[3, :, :].T - a_proj * z_b)
         for i in range(len_traj):
             rate[i, 0] = -h_omega[i].dot(y_b[i])
             rate[i, 1] = h_omega[i].dot(x_b[i])
@@ -221,7 +221,7 @@ def minimum_snap_trajectory_generator(
 
     full_pos = traj_derivatives[0, :, :].T
     full_vel = traj_derivatives[1, :, :].T
-    if frame == "W2B":
+    if body_frame_coordinates:
         q[:, 0:3] = -q[:, 0:3]
         for idx in range(len_traj):
             full_vel[idx, :] = quaternion_rotate_point(q[idx, :], full_vel[idx, :])
@@ -234,7 +234,9 @@ def minimum_snap_trajectory_generator(
     return Trajectory(traj_ref, u_ref, t_ref)
 
 
-def straight_trajectory(quad, begin, end, z, discretization_dt, lin_acc, v_max):
+def straight_trajectory(
+    begin, end, z, discretization_dt, lin_acc, v_max, trajectory_kw=None
+):
     position_diff = end - begin
     distance = np.linalg.norm(position_diff)
     heading_vector = position_diff[..., None] / distance
@@ -274,11 +276,12 @@ def straight_trajectory(quad, begin, end, z, discretization_dt, lin_acc, v_max):
     yaw = np.zeros((2, n))
     yaw[0, :] = np.arctan2(position_diff[1], position_diff[0])
 
-    return minimum_snap_trajectory_generator(traj, yaw, t_ref, quad)
+    if trajectory_kw is None:
+        trajectory_kw = {}
+    return minimum_snap_trajectory_generator(traj, yaw, t_ref, **trajectory_kw)
 
 
 def loop_trajectory(
-    quad,
     discretization_dt,
     radius,
     z,
@@ -286,11 +289,12 @@ def loop_trajectory(
     clockwise,
     yawing,
     v_max,
+    trajectory_kw=None,
 ):
     """
     Creates a circular trajectory on the x-y plane that increases speed by 1m/s at every revolution.
 
-    :param quad: Quadrotor model
+    :param params: Quadrotor model
     :param discretization_dt: Sampling period of the trajectory.
     :param radius: radius of loop trajectory in meters
     :param z: z position of loop plane in meters
@@ -446,20 +450,22 @@ def loop_trajectory(
 
     yaw = np.concatenate((yaw_traj[np.newaxis, :], w_vec[np.newaxis, :]), 0)
 
-    return minimum_snap_trajectory_generator(traj, yaw, t_ref, quad)
+    if trajectory_kw is None:
+        trajectory_kw = {}
+    return minimum_snap_trajectory_generator(traj, yaw, t_ref, **trajectory_kw)
 
 
 def lemniscate_trajectory(
-    quad,
     discretization_dt,
     radius,
     z,
     lin_acc,
     v_max,
+    trajectory_kw=None,
 ):
     """
 
-    :param quad:
+    :param params:
     :param discretization_dt:
     :param radius:
     :param z:
@@ -557,4 +563,6 @@ def lemniscate_trajectory(
 
     yaw = np.zeros_like(traj)
 
-    return minimum_snap_trajectory_generator(traj, yaw, t_ref, quad)
+    if trajectory_kw is None:
+        trajectory_kw = {}
+    return minimum_snap_trajectory_generator(traj, yaw, t_ref, **trajectory_kw)
