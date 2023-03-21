@@ -19,8 +19,9 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import annotations
 
-from dataclasses import dataclass
+import dataclasses
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -34,7 +35,7 @@ from quadrotor_mpc.rotation import (
 )
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass
 class Trajectory:
     states: NDArray[np.float64]
     inputs: NDArray[np.float64]
@@ -42,6 +43,17 @@ class Trajectory:
 
     def __len__(self):
         return self.time.size
+
+    def __iadd__(self, other: Trajectory):
+        self.states = np.concatenate((self.states, other.states))
+        self.inputs = np.concatenate((self.inputs, other.inputs))
+        self.time = np.concatenate((self.time, self.time[-1] + other.time))
+        return self
+
+    def __add__(self, other: Trajectory) -> Trajectory:
+        res = dataclasses.replace(self)
+        res += other
+        return res
 
     @property
     def time_interval(self):
@@ -106,8 +118,8 @@ def minimum_snap_trajectory_generator(
         quadrotor.
     """
 
-    traj_derivatives = np.asarray(traj_derivatives)
-    yaw_derivatives = np.asarray(yaw_derivatives)
+    traj_derivatives = np.asarray(traj_derivatives, dtype=np.float64)
+    yaw_derivatives = np.asarray(yaw_derivatives, dtype=np.float64)
     t_ref = np.asarray(t_ref)
 
     discretization_dt = t_ref[1] - t_ref[0]
@@ -227,10 +239,6 @@ def minimum_snap_trajectory_generator(
             full_vel[idx, :] = quaternion_rotate_point(q[idx, :], full_vel[idx, :])
     traj_ref = np.concatenate((full_pos, q, full_vel), 1)
 
-    # Locate starting point right at x=0 and y=0.
-    traj_ref[:, 0] -= traj_ref[0, 0]
-    traj_ref[:, 1] -= traj_ref[0, 1]
-
     return Trajectory(traj_ref, u_ref, t_ref)
 
 
@@ -245,13 +253,12 @@ def straight_trajectory(
 
     # Calculate simulation time to achieve desired maximum velocity with specified
     # acceleration
-    t_total = distance / v_max
+    t_cruise = distance / v_max - ramp_up_t
 
     refs = {}
     a = {}
     refs["ramp_up"] = np.r_[0:ramp_up_t:discretization_dt]
     a["ramp_up"] = lin_acc * np.ones_like(refs["ramp_up"])
-    t_cruise = t_total - 2 * ramp_up_t
     if t_cruise < 0.0:
         raise RuntimeError("Not enough time to accelerate to v_max and cruise!")
     refs["cruise"] = (
@@ -306,12 +313,10 @@ def loop_trajectory(
     :return: The full 13-DoF trajectory with time and input vectors
     """
 
-    # Apply map limits to radius
-    assert z > 0
-
     ramp_up_t = 2  # s
 
-    # Calculate simulation time to achieve desired maximum velocity with specified acceleration
+    # Calculate simulation time to achieve desired maximum velocity with specified
+    # acceleration
     t_total = 2 * v_max / lin_acc + 2 * ramp_up_t
 
     # Transform to angular acceleration
