@@ -5,11 +5,8 @@
 
 from argparse import ArgumentParser
 from pathlib import Path
-from time import time
 
 import numpy as np
-from tqdm import tqdm
-from visualization import trajectory_tracking_results
 
 from quadrotor_mpc import acados_wrapper, quadrotor_model, trajectory_generator
 
@@ -21,7 +18,7 @@ def parse_cli():
         "--codegen_dir",
         type=str,
         default="../lib",
-        help="File containing the Acados configuration",
+        help="Output directory for codegen",
     )
 
     parser.add_argument(
@@ -103,7 +100,6 @@ def main():
         )
     elif args.trajectory == "straight":
         trajectory = trajectory_generator.straight_trajectory(
-            model,
             np.r_[0.0, 0.0],
             np.r_[150.0, 0.0],
             1.0,
@@ -138,16 +134,8 @@ def main():
         np.sqrt(np.sum((trajectory.states[:, :3] - yout["states"][:, :3]) ** 2, axis=1))
     )
 
-    v_max = float(np.max(trajectory.states[:, 7:10]))
-
-    title = rf"$v_{{max}}$={v_max:.2f} m/s | RMSE: {tracking_rmse:.4f} m"
-    trajectory_tracking_results(
-        trajectory.time,
-        trajectory.states,
-        yout["states"],
-        trajectory.inputs,
-        yout["inputs"],
-        title,
+    _ = acados_wrapper.utils.visualize_tracking_results(
+        tout, yout, trajectory, autoshow=True
     )
 
     v_max_abs = np.max(np.sqrt(np.sum(trajectory.states[:, 7:10] ** 2, 1)))

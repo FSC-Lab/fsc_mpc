@@ -5,6 +5,9 @@
 
 import time
 import numpy as np
+from scipy.spatial.transform import Rotation
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import tqdm
 
 from quadrotor_mpc import acados_wrapper, quadrotor_model, trajectory_generator
@@ -31,7 +34,7 @@ def run_simulation(
     total_sim_time = 0.0
 
     print("\nRunning simulation...")
-    tout = [time.time()]
+    tout = []
     yout = {"states": [], "inputs": []}
     if profile_data:
         yout["solve_time"] = [0.0]
@@ -80,3 +83,108 @@ def run_simulation(
     yout = {k: np.asarray(v, dtype=np.float64) for k, v in yout.items()}
 
     return tout, yout
+
+
+def visualize_tracking_results(
+    tout, yout, trajectory: trajectory_generator.trajectories.Trajectory, handles=None, autoshow=False
+):
+    create_new_handles = handles is None
+    if create_new_handles:
+        handles = []
+        f1, ax = plt.subplots(subplot_kw=dict(projection="3d"))
+        handles.append({"fig": f1, "ax": ax})
+    else:
+        f1 = handles[0]["fig"]
+        ax = handles[0]["ax"]
+
+    expect_states = trajectory.states
+    result_states = yout["states"]
+    expect_position = expect_states[:, 0:3]
+    result_position = result_states[:, 0:3]
+
+    expect_attitude = expect_states[:, 3:7]
+    result_attitude = result_states[:, 3:7]
+
+    expect_velocity = expect_states[:, 7:10]
+    result_velocity = result_states[:, 7:10]
+
+    ax.plot(
+        expect_position[:, 0],
+        expect_position[:, 1],
+        expect_position[:, 2],
+        linewidth=2,
+        label="Trajectory Reference",
+    )
+    ax.plot(
+        result_position[:, 0],
+        result_position[:, 1],
+        result_position[:, 2],
+        "--",
+        linewidth=2,
+        label="Simulated Trajectory",
+    )
+    ax.legend()
+    ax.set_xlabel("X (m)")
+    ax.set_ylabel("Y (m)")
+    ax.set_zlabel("Z (m)")  # type: ignore
+    mean_z = expect_position[:, 2].mean()
+    ax.set_zlim(mean_z - 1, mean_z + 1)
+
+    position_error = np.abs(expect_position - result_position)
+    attitude_error = np.abs(
+        (
+            Rotation.from_quat(expect_attitude)
+            * Rotation.from_quat(result_attitude).inv()
+        ).as_rotvec()
+    )
+
+    velocity_error = np.abs(expect_velocity - result_velocity)
+    if create_new_handles:
+        f2, ax = plt.subplots(1, 3, figsize=(12, 4))
+        handles.append({"fig": f2, "ax": ax})
+    else:
+        f2 = handles[1]["fig"]
+        ax = handles[1]["ax"]
+
+    for idx, it in enumerate("XYZ"):
+        ax[0].plot(
+            tout,
+            position_error[:, idx],
+            alpha=0.5,
+            label=f"{it}-axis absolute position error",
+        )
+        ax[0].axhline(
+            position_error[:, idx].mean(),
+            color=f"C{idx}",
+            label=f"{it}-axis position MAE",
+        )
+        ax[1].plot(
+            tout,
+            attitude_error[:, idx],
+            alpha=0.5,
+            label=f"{it}-axis absolute angular error",
+        )
+        ax[1].axhline(
+            attitude_error[:, idx].mean(),
+            color=f"C{idx}",
+            label=f"{it}-axis attitude MAE",
+        )
+        ax[2].plot(
+            tout,
+            velocity_error[:, idx],
+            alpha=0.5,
+            label=f"{it}-axis absolute velocity error",
+        )
+        ax[2].axhline(
+            velocity_error[:, idx].mean(),
+            color=f"C{idx}",
+            label=f"{it}-axis velocity MAE",
+        )
+
+    for it in ax:
+        it.set_xlabel("Time (s)")
+        it.legend()
+
+    if autoshow:
+        plt.show()
+    return handles
