@@ -35,7 +35,7 @@ class QuadrotorModel:
 
     def __init__(
         self,
-        mass: float,
+        mass: Union[float, cs.MX],
         initial_state: ArrayLike = DEFAULT_STATE,
         noisy: bool = False,
         drag: bool = False,

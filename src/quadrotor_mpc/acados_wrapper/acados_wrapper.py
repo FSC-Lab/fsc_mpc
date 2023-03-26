@@ -28,7 +28,9 @@ class AcadosWrapperException(Exception):
     pass
 
 
-def make_quadrotor_model(model_name: str, mass: float = 1.0):
+def make_quadrotor_model(
+    model_name: str, mass: Union[float, cs.MX] = cs.MX.sym("mass")
+):
     # Declare model variables
     x = cs.MX.sym("x", 10)  # type: ignore
     u = cs.MX.sym("u", 4)  # type: ignore
@@ -45,7 +47,8 @@ def make_quadrotor_model(model_name: str, mass: float = 1.0):
     acados_model.x = x
     acados_model.xdot = x_dot
     acados_model.u = u
-    acados_model.p = []
+    if isinstance(mass, cs.MX):
+        acados_model.p = mass  # type: ignore
     acados_model.name = model_name  # type: ignore
     return acados_model
 
@@ -83,6 +86,8 @@ class AcadosWrapper:
         ocp.model = model
         cls._nx = cs.MX(model.x).size(1)
         cls._nu = cs.MX(model.u).size(1)
+        if isinstance(model.p, cs.MX) and model.p.size(1):
+            ocp.parameter_values = np.zeros(model.p.size(1))
         cls._ny = cls._nx + cls._nu
         ocp.dims.N = n_nodes
         ocp.solver_options.tf = t_horizon
@@ -152,6 +157,11 @@ class AcadosWrapper:
         return cls(
             AcadosOcpSolver(AcadosOcp(), str(codegen_file), build=False, generate=False)
         )
+
+    def set_constant_parameter(self, value):
+        value = np.asarray(value)
+        for it in range(self.n_nodes):
+            self._solver.set(it, "p", value)
 
     @property
     def n_nodes(self):

@@ -126,6 +126,8 @@ def main():
             codegen_dst=str(codegen_dir),
         )
 
+    solver.set_constant_parameter([1.0])
+
     # Simulation integration step (the smaller the more "continuous"-like simulation.
     tout, yout = acados_wrapper.utils.run_simulation(
         model, solver, trajectory, reference_over_sampling, profile_data=True
