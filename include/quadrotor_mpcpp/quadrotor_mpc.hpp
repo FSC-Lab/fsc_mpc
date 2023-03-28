@@ -11,11 +11,8 @@
 
 #include "Eigen/Core"
 #include "Eigen/Geometry"
+#include "quadrotor_mpcpp/internal.hpp"
 #include "quadrotor_mpcpp/solver_wrapper.hpp"
-
-extern "C" {
-#include "acados_solver_quadrotor.h"
-}
 
 namespace control {
 
@@ -35,14 +32,14 @@ class AcadosWrapperException : public std::runtime_error {
 
 class AcadosMPC {
  public:
-  enum {  // TODO(Hs293Go): Trim the enum copying boilerplate
-    kStateSize = static_cast<int>(Dimensions::kStateSize),
-    kInputSize = static_cast<int>(Dimensions::kInputSize),
-    kRefSize = static_cast<int>(Dimensions::kRefSize),
-    kEndRefSize = static_cast<int>(Dimensions::kEndRefSize),
-    kSamples = static_cast<int>(Dimensions::kSamples),
-    kCostSize = static_cast<int>(Dimensions::kCostSize),
-    kParamSize = static_cast<int>(Dimensions::kParamSize)
+  enum {
+    kStateSize = details::ToUnderlying(Dimensions::kStateSize),
+    kInputSize = details::ToUnderlying(Dimensions::kInputSize),
+    kRefSize = details::ToUnderlying(Dimensions::kRefSize),
+    kEndRefSize = details::ToUnderlying(Dimensions::kEndRefSize),
+    kSamples = details::ToUnderlying(Dimensions::kSamples),
+    kCostSize = details::ToUnderlying(Dimensions::kCostSize),
+    kParamSize = details::ToUnderlying(Dimensions::kParamSize)
   };
 
   // Working variables of the solver

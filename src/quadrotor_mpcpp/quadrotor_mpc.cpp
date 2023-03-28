@@ -18,16 +18,6 @@ extern "C" {
 
 namespace control {
 
-namespace details {
-template <typename T>
-auto MutData(const T &obj) -> std::add_pointer_t<
-    std::remove_const_t<std::remove_pointer_t<decltype(obj.data())>>> {
-  using ConstElement = std::remove_pointer_t<decltype(obj.data())>;
-  using MutPtr = std::add_pointer_t<std::remove_const_t<ConstElement>>;
-  return const_cast<MutPtr>(obj.data());
-}
-}  // namespace details
-
 constexpr double AcadosMPC::kGravAccel;
 
 const AcadosMPC::StateType AcadosMPC::kDefaultState =

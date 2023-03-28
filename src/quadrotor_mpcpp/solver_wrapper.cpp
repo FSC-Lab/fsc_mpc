@@ -1,7 +1,5 @@
 #include "quadrotor_mpcpp/solver_wrapper.hpp"
 
-#include "acados_solver_quadrotor.h"
-
 namespace acadospp {
 SolverCapsule* CreateCapsule() { return ACADOS_OBJ(acados_create_capsule)(); }
 

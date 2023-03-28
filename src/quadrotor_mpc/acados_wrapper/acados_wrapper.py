@@ -137,7 +137,7 @@ class AcadosWrapper:
         if not codegen_dst.exists():
             pathlib.Path.mkdir(codegen_dst, parents=True)
 
-        ocp.code_export_directory = str(codegen_dst / "c_generated_code")
+        ocp.code_export_directory = str(codegen_dst)
         json_file = str(codegen_dst / "acados_ocp_nlp.json")
 
         # Solver options

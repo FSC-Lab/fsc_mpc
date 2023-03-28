@@ -6,23 +6,21 @@
 #ifndef QUADROTOR_MPCPP_SOLVER_WRAPPER_HPP_
 #define QUADROTOR_MPCPP_SOLVER_WRAPPER_HPP_
 
-#include <acados/ocp_nlp/ocp_nlp_common.h>
-#include <acados_c/ocp_nlp_interface.h>
-
-#include <utility>
-
-#include "acados_solver_quadrotor.h"
+#include "acados/ocp_nlp/ocp_nlp_common.h"
+#include "acados_c/ocp_nlp_interface.h"
+#include "quadrotor_mpcpp/internal.hpp"
 
 #ifndef MODEL_NAME_UPPER
-#define MODEL_NAME_UPPER QUADROTOR
+#error MISSING DEFINITION FOR MODEL_NAME_UPPER
 #endif
 
 #ifndef MODEL_NAME_LOWER
-#define MODEL_NAME_LOWER quadrotor
+#error MISSING DEFINITION FOR MODEL_NAME_LOWER
 #endif
 
-#define CAT_IMPL(A, B) A##B
-#define CAT(A, B) CAT_IMPL(A, B)
+#define SOLVER_LIB STRINGIFY(CAT(acados_solver_, MODEL_NAME_LOWER).h)
+
+#include SOLVER_LIB
 
 #define ACADOS_PARAM(PARM) CAT(CAT(MODEL_NAME_UPPER, _), PARM)
 
