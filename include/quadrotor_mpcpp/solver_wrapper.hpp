@@ -33,6 +33,7 @@ enum class Dimensions {
   kEndRefSize = ACADOS_PARAM(NYN),
   kSamples = ACADOS_PARAM(N),
   kCostSize = ACADOS_PARAM(NY) - ACADOS_PARAM(NU),
+  kBoundsSize = ACADOS_PARAM(NBU),
   kParamSize = ACADOS_PARAM(NP)
 };
 
@@ -46,6 +47,8 @@ int FreeCapsule(SolverCapsule* capsule);
 int CreateSolver(SolverCapsule* capsule);
 
 int FreeSolver(SolverCapsule* capsule);
+
+int ResetSolver(SolverCapsule* capsule, bool reset_qp_solver_mem);
 
 int CreateSolverWithDiscretization(SolverCapsule* capsule, int n_time_steps,
                                    double* new_time_steps);

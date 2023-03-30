@@ -15,6 +15,11 @@ int FreeSolver(SolverCapsule* capsule) {
   return ACADOS_OBJ(acados_free)(capsule);
 }
 
+int ResetSolver(SolverCapsule* capsule, bool reset_qp_solver_mem) {
+  return ACADOS_OBJ(acados_reset)(capsule,
+                                  static_cast<int>(reset_qp_solver_mem));
+}
+
 int CreateSolverWithDiscretization(SolverCapsule* capsule, int n_time_steps,
                                    double* new_time_steps) {
   return ACADOS_OBJ(acados_create_with_discretization)(capsule, n_time_steps,

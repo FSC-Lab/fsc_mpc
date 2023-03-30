@@ -39,6 +39,7 @@ class AcadosMPC {
     kEndRefSize = details::ToUnderlying(Dimensions::kEndRefSize),
     kSamples = details::ToUnderlying(Dimensions::kSamples),
     kCostSize = details::ToUnderlying(Dimensions::kCostSize),
+    kBoundsSize = details::ToUnderlying(Dimensions::kBoundsSize),
     kParamSize = details::ToUnderlying(Dimensions::kParamSize)
   };
 
@@ -94,6 +95,13 @@ class AcadosMPC {
   explicit AcadosMPC(InRef<Eigen::VectorXd> time_steps);
 
   ~AcadosMPC();
+
+  /**
+   * @brief Resets the acados solver
+   *
+   * @param reset_qp_solver_mem Toggles resetting the memory in the QP solver
+   */
+  void resetSolver(bool reset_qp_solver_mem = false);
 
   /**
    * @brief Set the constraints on the solver state at the initial shooting
