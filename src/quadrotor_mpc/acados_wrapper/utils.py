@@ -86,7 +86,11 @@ def run_simulation(
 
 
 def visualize_tracking_results(
-    tout, yout, trajectory: trajectory_generator.trajectories.Trajectory, handles=None, autoshow=False
+    tout,
+    yout,
+    trajectory: trajectory_generator.trajectories.Trajectory,
+    handles=None,
+    autoshow=False,
 ):
     create_new_handles = handles is None
     if create_new_handles:

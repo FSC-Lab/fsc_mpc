@@ -292,10 +292,10 @@ def loop_trajectory(
     discretization_dt,
     radius,
     z,
-    lin_acc,
-    clockwise,
-    yawing,
     v_max,
+    lin_acc,
+    clockwise=False,
+    yawing=False,
     trajectory_kw=None,
 ):
     """

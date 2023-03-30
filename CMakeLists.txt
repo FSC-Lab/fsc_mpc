@@ -22,8 +22,8 @@ string(TOUPPER ${MODEL_NAME_LOWER} MODEL_NAME_UPPER)
 # Step 1: Generate the ACADOS solver using python
 add_custom_command(
   OUTPUT ${CODEGEN_FILES}
-  COMMAND ${Python_EXECUTABLE} build_quadrotor_model.py ${CODEGEN_DIR} --name
-          ${PROJECT_NAME}
+  COMMAND PYTHONPATH=${CMAKE_SOURCE_DIR}/src ${Python_EXECUTABLE}
+          build_quadrotor_model.py ${CODEGEN_DIR} --name ${PROJECT_NAME}
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/${PROJECT_NAME}"
   COMMENT "Generating Acados solver library"
   VERBATIM)

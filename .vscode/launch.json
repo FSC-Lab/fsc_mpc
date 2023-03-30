@@ -8,7 +8,7 @@
       "program": "${workspaceFolder}/examples/tracking_example.py",
       "args": [
         "--codegen_dir",
-        "${workspaceFolder}/lib",
+        "${workspaceFolder}/lib/example",
         "--trajectory",
         "lemniscate",
       ],

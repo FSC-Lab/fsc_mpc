@@ -17,7 +17,7 @@ def parse_cli():
     parser.add_argument(
         "--codegen_dir",
         type=str,
-        default="../lib",
+        default="../lib/example",
         help="Output directory for codegen",
     )
 

@@ -196,8 +196,8 @@ class AcadosWrapper:
             references
         """
 
-        x_reference = np.asarray(x_reference)
-        u_reference = np.asarray(u_reference)
+        x_reference = np.asarray(x_reference, dtype=np.float64)
+        u_reference = np.asarray(u_reference, dtype=np.float64)
         n_x_samples, nx = x_reference.shape
         n_u_samples, nu = u_reference.shape
         if n_x_samples not in (n_u_samples + 1, n_u_samples):
