@@ -16,16 +16,6 @@
 
 namespace control {
 
-namespace details {
-template <typename T, int (*D)(T *)>
-struct DeleterWrapper {
-  inline void operator()(T *obj) const { static_cast<void>(D(obj)); }
-};
-
-template <typename T, int (*D)(T *)>
-using Handle = std::unique_ptr<T, DeleterWrapper<T, D>>;
-}  // namespace details
-
 class AcadosWrapperException : public std::runtime_error {
   using std::runtime_error::runtime_error;
 };

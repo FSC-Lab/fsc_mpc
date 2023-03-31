@@ -1,6 +1,7 @@
 #ifndef QUADROTOR_MPCPP_INTERNAL_HPP_
 #define QUADROTOR_MPCPP_INTERNAL_HPP_
 
+#include <memory>
 #include <type_traits>
 
 #define CAT_IMPL(A, B) A##B
@@ -23,6 +24,14 @@ template <typename T>
 constexpr std::underlying_type_t<T> ToUnderlying(T value) {
   return static_cast<std::underlying_type_t<T>>(value);
 }
+
+template <typename T, int (*D)(T *)>
+struct DeleterWrapper {
+  inline void operator()(T *obj) const { static_cast<void>(D(obj)); }
+};
+
+template <typename T, int (*D)(T *)>
+using Handle = std::unique_ptr<T, DeleterWrapper<T, D>>;
 
 }  // namespace details
 }  // namespace control
