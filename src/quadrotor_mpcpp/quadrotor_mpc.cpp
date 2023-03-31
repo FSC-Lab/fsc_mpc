@@ -5,6 +5,8 @@
 
 #include "quadrotor_mpcpp/quadrotor_mpc.hpp"
 
+#include "quadrotor_mpcpp/internal.hpp"
+
 extern "C" {
 #include "acados_c/ocp_nlp_interface.h"
 }
@@ -20,6 +22,8 @@ namespace control {
 
 constexpr double AcadosMPC::kGravAccel;
 
+// TODO(Hs293Go): Fix the default definitions, which tightly couples this
+// interface to the quadrotor model
 const AcadosMPC::StateType AcadosMPC::kDefaultState =
     (AcadosMPC::StateType() << Eigen::Vector3d::Zero(),  // Position
      Eigen::Quaterniond::Identity().coeffs(),            // Attitude
@@ -92,6 +96,20 @@ void AcadosMPC::setCosts(InRef<StateCostType> Q, InRef<InputType> R) {
   }
   ocp_nlp_cost_model_set(config_, dims_, in_, kSamples, "W",
                          details::MutData(Q));
+}
+
+void AcadosMPC::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
+  using details::MutData;
+  if ((lbu.array() > ubu.array()).any()) {
+    throw AcadosWrapperException(
+        "Some elements in lower bound are greater than corresponding elements "
+        "in upper bound");
+  }
+
+  for (int i = 0; i < kSamples; ++i) {
+    ocp_nlp_constraints_model_set(config_, dims_, in_, i, "lbu", MutData(lbu));
+    ocp_nlp_constraints_model_set(config_, dims_, in_, i, "ubu", MutData(ubu));
+  }
 }
 
 AcadosMPC::StateType AcadosMPC::getState(int i) const {

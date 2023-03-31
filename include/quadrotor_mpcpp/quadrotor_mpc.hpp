@@ -57,6 +57,9 @@ class AcadosMPC {
   // Type of the R matrix
   using InputCostType = Eigen::Matrix<double, kInputSize, kInputSize>;
 
+  // Type of input bounds
+  using BoundsType = Eigen::Matrix<double, kBoundsSize, 1>;
+
   // Type of the reference vector. Typically [x_ref; u_ref]
   using RefType = Eigen::Matrix<double, kRefSize, 1>;
 
@@ -137,6 +140,8 @@ class AcadosMPC {
    * @param R The input cost matrix
    */
   void setCosts(InRef<StateCostType> Q, InRef<InputType> R);
+
+  void setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu);
 
   /**
    * @brief Get the state predicted by the solver at some given shooting node
