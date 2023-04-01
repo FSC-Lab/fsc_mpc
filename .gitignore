@@ -1,5 +1,5 @@
 *_ocp_nlp.json
-build/
+*build*/
 c_generated_code/
 data/*.npz
 

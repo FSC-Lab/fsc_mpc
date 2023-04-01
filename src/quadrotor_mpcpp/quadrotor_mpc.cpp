@@ -124,6 +124,15 @@ AcadosMPC::InputType AcadosMPC::getInput(int i) const {
   return res;
 }
 
+void AcadosMPC::setReferenceState(InRef<StateType> state,
+                                  InRef<InputType> input) {
+  const RefType ref = (RefType() << state, input).finished();
+  for (int i = 0; i < kSamples; ++i) {
+    setReference(i, ref);
+  }
+  setTerminalReference(state);
+}
+
 void AcadosMPC::setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
                                        InRef<InputTrajectoryType> input_ref) {
   const int n_x_samples = state_ref.cols();

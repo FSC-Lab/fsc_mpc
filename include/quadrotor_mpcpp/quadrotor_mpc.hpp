@@ -131,6 +131,15 @@ class AcadosMPC {
    */
   void setCosts(InRef<StateCostType> Q, InRef<InputType> R);
 
+  /**
+   * @brief Set bounds on system inputs
+   *
+   * Throws an exception if any element in the lower bounds vector are not
+   * smaller than corresponding element in upper bounds vector
+   *
+   * @param lbu The lower bounds on system inputs
+   * @param ubu The upper bounds on system inputs
+   */
   void setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu);
 
   /**
@@ -150,7 +159,18 @@ class AcadosMPC {
   [[nodiscard]] InputType getInput(int i) const;
 
   /**
-   * @brief Set the state and input reference over all shooting nodes
+   * @brief Set the state and input reference over all shooting nodes to a
+   * single state and input setpoint
+   *
+   * @param state The state setpoint
+   * @param input The input setpoint
+   */
+  void setReferenceState(InRef<StateType> state,
+                         InRef<InputType> input = kDefaultInput);
+
+  /**
+   * @brief Set the state and input reference over all shooting nodes to a
+   * trajectory of distinct states and inputs
    *
    * @details State and input references are specified as matrices consisting of
    * column-wise stacks of state and input vectors respectively. The width
