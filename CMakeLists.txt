@@ -1,7 +1,7 @@
 project(quadrotor_mpcpp)
 cmake_minimum_required(VERSION 3.14.0)
 
-option(BUILD_EXAMPLES ON)
+option(BUILD_EXAMPLES "Build Examples" ON)
 
 set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
 
@@ -28,7 +28,10 @@ add_custom_command(
   COMMENT "Generating Acados solver library"
   VERBATIM)
 
-add_custom_target(acados_python_codegen DEPENDS ${CODEGEN_FILES})
+add_custom_target(
+  acados_python_codegen
+  DEPENDS ${CODEGEN_FILES}
+  COMMENT "Generating Acados solver library")
 
 # Step 2: Compile the generated source AND the cpp API wrapper
 add_library(solver_wrapper ${CODEGEN_FILES}
