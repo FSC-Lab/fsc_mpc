@@ -87,15 +87,21 @@ void AcadosMPC::setTerminalReference(InRef<EndRefType> terminal_ref) {
                          MutData(terminal_ref));
 }
 
-void AcadosMPC::setCosts(InRef<StateCostType> Q, InRef<InputType> R) {
-  Eigen::Matrix<double, kRefSize, kRefSize> costs =
-      (RefType() << Q.diagonal(), R.diagonal()).finished().asDiagonal();
-
+void AcadosMPC::setCosts(InRef<StateCostType> Q, InRef<InputCostType> R) {
+  using details::MutData;
+  Eigen::Matrix<double, kRefSize, kRefSize> costs;
+  costs.topLeftCorner<kCostSize, kCostSize>() = Q;
+  costs.bottomRightCorner<kInputSize, kInputSize>() = R;
   for (int i = 0; i < kSamples; ++i) {
-    ocp_nlp_cost_model_set(config_, dims_, in_, i, "W", costs.data());
+    ocp_nlp_cost_model_set(config_, dims_, in_, i, "W", MutData(costs));
   }
-  ocp_nlp_cost_model_set(config_, dims_, in_, kSamples, "W",
-                         details::MutData(Q));
+  ocp_nlp_cost_model_set(config_, dims_, in_, kSamples, "W", MutData(Q));
+}
+
+void AcadosMPC::setCostWeights(InRef<StateCostWeightType> q_weights,
+                               InRef<InputCostWeightType> r_weights) {
+  setCosts(StateCostType(q_weights.asDiagonal()),
+           InputCostType(r_weights.asDiagonal()));
 }
 
 void AcadosMPC::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {

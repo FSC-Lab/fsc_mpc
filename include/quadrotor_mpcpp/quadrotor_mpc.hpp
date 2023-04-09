@@ -44,8 +44,14 @@ class AcadosMPC {
   // Type of the Q matrix
   using StateCostType = Eigen::Matrix<double, kCostSize, kCostSize>;
 
+  // Type of state cost weights, i.e. diag(Q)
+  using StateCostWeightType = Eigen::Matrix<double, kCostSize, 1>;
+
   // Type of the R matrix
   using InputCostType = Eigen::Matrix<double, kInputSize, kInputSize>;
+
+  // Type of input cost weights, i.e. diag(R)
+  using InputCostWeightType = Eigen::Matrix<double, kInputSize, 1>;
 
   // Type of input bounds
   using BoundsType = Eigen::Matrix<double, kBoundsSize, 1>;
@@ -126,10 +132,22 @@ class AcadosMPC {
   /**
    * @brief Set the state and input cost matrices
    *
+   * When specifying cost weights only, do not pass `(...).asDiagonal()` to this
+   * function, but use the `setCostWeights`
+   *
    * @param Q The state cost matrix
    * @param R The input cost matrix
    */
-  void setCosts(InRef<StateCostType> Q, InRef<InputType> R);
+  void setCosts(InRef<StateCostType> Q, InRef<InputCostType> R);
+
+  /**
+   * @brief Set the state and input cost weights
+   *
+   * @param q_weights A vector of state cost weights
+   * @param r_weights A vector of input cost weights
+   */
+  void setCostWeights(InRef<StateCostWeightType> q_weights,
+                      InRef<InputCostWeightType> r_weights);
 
   /**
    * @brief Set bounds on system inputs
