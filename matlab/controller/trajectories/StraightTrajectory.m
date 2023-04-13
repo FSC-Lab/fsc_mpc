@@ -1,4 +1,4 @@
-function trajectory = StraightTrajectory(quad, traj_begin, traj_end, z, discretization_dt, lin_acc, v_max)
+function trajectory = StraightTrajectory(quad, traj_begin, traj_end, discretization_dt, lin_acc, v_max)
     position_diff = traj_end - traj_begin;
     distance = norm(position_diff);
     heading_vector = position_diff / distance;
@@ -14,7 +14,7 @@ function trajectory = StraightTrajectory(quad, traj_begin, traj_end, z, discreti
     a = struct();
     refs.ramp_up = 0:discretization_dt:(ramp_up_t - discretization_dt);
     a.ramp_up = lin_acc * ones(size(refs.ramp_up));
-    refs.cruise = refs.ramp_up(end) + (0:discretization_dt:t_cruise);
+    refs.cruise = refs.ramp_up(end) + discretization_dt + (0:discretization_dt:t_cruise);
 
     a.cruise = zeros(size(refs.cruise));
     refs.ramp_down = refs.cruise(end) + (0:discretization_dt:ramp_up_t) + discretization_dt;
@@ -27,11 +27,10 @@ function trajectory = StraightTrajectory(quad, traj_begin, traj_end, z, discreti
 
     n = length(t_ref);
     traj = zeros(4, 3, n);
-    traj(1, 1:2, :) = traj_begin + heading_vector .* d_vec;
-    assert(norm(traj(1, 1:2, end) - reshape(traj_end, 1, [])) < 1);
-    traj(1, 3, :) = z;
-    traj(2, 1:2, :) = heading_vector * v_vec;
-    traj(3, 1:2, :) = heading_vector * a_vec;
+    traj(1, :, :) = traj_begin + heading_vector .* d_vec;
+    assert(norm(traj(1, 1:3, end) - reshape(traj_end, 1, [])) < 1);
+    traj(2, :, :) = heading_vector * v_vec;
+    traj(3, :, :) = heading_vector * a_vec;
     yaw = zeros(2, n);
     yaw(1, :) = atan2(position_diff(2), position_diff(1));
 

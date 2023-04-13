@@ -1,4 +1,17 @@
-function ocp = MakeAcadosOptimizer(t_horizon, n_nodes, q_cost, r_cost, bounds, model_name)
+function ocp = MakeAcadosOptimizer(t_horizon, n_nodes, q_cost, r_cost, bounds, varargin)
+
+p = inputParser;
+p.addRequired('t_horizon', @(arg) isscalar(arg) && arg > 0.0);
+p.addRequired('n_nodes', @(arg) isscalar(arg) && arg > 0.0);
+p.addRequired('q_cost', @isvector);
+p.addRequired('r_cost', @isvector);
+p.addRequired('bounds', @ismatrix)
+p.addOptional('model_name', 'uav', @ischar);
+p.addOptional('build_dir', 'build/uav', @ischar);
+
+p.parse(t_horizon, n_nodes, q_cost, r_cost, bounds, varargin{:});
+model_name = p.Results.model_name;
+build_dir = p.Results.build_dir;
 
 shooting_nodes = linspace(0, t_horizon, n_nodes + 1);
 acados_model = MakeQuadrotorModel(model_name);
@@ -49,7 +62,7 @@ acados_opts.set('shooting_nodes', shooting_nodes);
 acados_opts.set('nlp_solver', 'sqp_rti');
 acados_opts.set('sim_method', 'erk');
 acados_opts.set('qp_solver', 'full_condensing_hpipm');
-acados_opts.set('output_dir', sprintf('build/%s', model_name));
+acados_opts.set('output_dir', build_dir);
 
 ocp = acados_ocp(acados_model, acados_opts);
 

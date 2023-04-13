@@ -1,18 +1,14 @@
-function setup(acados_root)
+function setup(varargin)
 %SETUP Summary of this function goes here
 %   Detailed explanation goes here
 
-if nargin == 0
-    acados_root = getenv("ACADOS_INSTALL_DIR");
-end
+p = inputParser;
+p.addOptional("acados_root", getenv("ACADOS_SOURCE_DIR"), @isstring);
+p.addParameter("build_dir", "", @isstring);
+[varargin{:}] = convertCharsToStrings(varargin{:});
+p.parse(varargin{:});
 
-if isempty(acados_root)
-    error("Failed to get a valid acados installation location");
-end
-
-if ~isfolder(acados_root)
-    error("Got acados installation location: %s, but it is not a valid folder");
-end
+acados_root = p.Results.acados_root;
 setenv("ACADOS_INSTALL_DIR", acados_root);
 
 acados_dirs = ["/external/casadi-matlab/", ...
@@ -30,10 +26,19 @@ for it = acados_dirs
     end
 end
 
+if startsWith(p.Results.build_dir, "/")
+    build_dir = p.Results.build_dir;
+else
+    build_dir = strcat("/", p.Results.build_dir);
+end
+
 ld_run_path = getenv("LD_RUN_PATH");
-link_dirs = [strcat(acados_root, "/lib"), strcat(pwd, "/build")];
+link_dirs = [strcat(acados_root, "/lib"), strcat(pwd, build_dir)];
 link_dirs = arrayfun(@(it) string(what(it).path), link_dirs);
 for it = link_dirs
+    if isempty(it)
+        warning("Attempting to add empty directory to LD_RUN_PATH");
+    end
     if contains(ld_run_path, it)
         fprintf("OK: %s is already in LD_RUN_PATH\n", it);
     elseif isempty(ld_run_path)
