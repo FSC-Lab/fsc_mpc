@@ -1,6 +1,6 @@
 addpath controller/trajectories/ controller/model/ utils/
 
-setup ~/src/acados;
+setup ~/src/acados build_dir build/uav;
 %
 warning('off', 'all');
 if exist(sprintf('%s/build', pwd), 'dir')
@@ -33,12 +33,12 @@ trajectory(2) = struct('states', [], 'inputs', [], 'time', []);
 for i = 1:numel(trajectory)
     switch i
         case 1
-            trajectory(i) = StraightTrajectory(quad, [0; 0], [150; 0], 1.0, control_period, acceleration, max_vel);
+            trajectory(i) = StraightTrajectory(quad, [0; 0; 1.0], [150; 0; 1.0], control_period, acceleration, max_vel);
         case 2
             trajectory(i) = LemniscateTrajectory(quad, control_period, radius, altitude, acceleration, max_vel);
     end
 
     fprintf("\nRunning simulation...\n");
-    [tout, yout] = RunSimulation(ocp, n_mpc_nodes, reference_over_sampling, quad, trajectory(i));
+    [tout, yout] = RunSimulation(ocp, trajectory(i));
     PlotTrackingResults(trajectory(i), tout, yout);
 end

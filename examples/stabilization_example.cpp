@@ -16,6 +16,11 @@ int main() {
       Eigen::Vector3d::Zero();
 
   controller.setReferenceState(target_state);
+  control::AcadosMPC::StateType q_weights;
+  q_weights << Eigen::Vector3d::Constant(1), Eigen::Vector3d::Constant(1), 0.0,
+      Eigen::Vector3d::Constant(0.1);
+  control::AcadosMPC::InputType r_weights;
+  controller.setCosts(q_weights.asDiagonal().toDenseMatrix(), r_weights);
   constexpr double kControlPeriod = 0.1;
   double time = 0.0;
   controller.setConstantParameters(control::AcadosMPC::ParamType(1.0));

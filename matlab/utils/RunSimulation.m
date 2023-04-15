@@ -18,7 +18,7 @@ reference_over_sampling = p.Results.reference_over_sampling;
 simulation_dt = p.Results.simulation_dt;
 
 n_mpc_nodes = ocp.opts_struct.param_scheme_N;
-quad_current_state = trajectory.states(1, :);
+quad_current_state = trajectory.states(:, 1);
 
 quad.mass = p.Results.vehicle_mass;
 quad.x = quad_current_state;
@@ -41,11 +41,11 @@ for i = 1:t_length - 1
         n_mpc_nodes, ...
         reference_over_sampling ...
         );
-
+    
     ocp = SetReference(ocp, n_mpc_nodes, ref_traj_chunk, ref_u_chunk);
     [u_opt, ~] = Optimize(ocp, n_mpc_nodes, quad.x);
 
-    ref_u = u_opt(1, :).';
+    ref_u = u_opt(:, 1);
     yout.u(:, i) = ref_u;
     simulation_time = 0.0;
     if ~isempty(simulation_dt)
@@ -56,8 +56,8 @@ for i = 1:t_length - 1
         end
     else
         quad = update_fcn(quad, ref_u, control_period(i));
+        total_sim_time = total_sim_time + control_period(i);
     end
-    total_sim_time = total_sim_time + control_period(i);
     tout(i + 1) = total_sim_time;
     yout.x(:, i + 1) = quad.x;
 end

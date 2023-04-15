@@ -35,5 +35,5 @@ function trajectory = StraightTrajectory(quad, traj_begin, traj_end, discretizat
     yaw(1, :) = atan2(position_diff(2), position_diff(1));
 
     [traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj, yaw, t_ref, 'QuadMass', quad.mass, 'StartAtZero', false, 'UseBodyFrameDynamics', true);
-    trajectory = struct('states', traj_ref, 'inputs', u_ref, 'time', t_ref);
+    trajectory = struct('states', traj_ref.', 'inputs', u_ref.', 'time', t_ref);
 end

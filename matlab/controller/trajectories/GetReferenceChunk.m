@@ -14,15 +14,15 @@ function [ref_traj_chunk, ref_u_chunk] = GetReferenceChunk(reference_traj, refer
 %        - An (Nx4) array, corresponding to the reference controls.
 
 % Dense references
-traj_sent = min((current_idx + (n_mpc_nodes + 1) * reference_over_sampling - 1), size(reference_traj, 1));
-ref_traj_chunk = reference_traj(current_idx:traj_sent, :);
-u_sent = min((current_idx + n_mpc_nodes * reference_over_sampling - 1), size(reference_u, 1));
-ref_u_chunk = reference_u(current_idx:u_sent, :);
+traj_sent = min((current_idx + (n_mpc_nodes + 1) * reference_over_sampling - 1), size(reference_traj, 2));
+ref_traj_chunk = reference_traj(:, current_idx:traj_sent);
+u_sent = min((current_idx + n_mpc_nodes * reference_over_sampling - 1), size(reference_u, 2));
+ref_u_chunk = reference_u(:, current_idx:u_sent);
 
 % Indices for down-sampling the reference to number of MPC nodes
-downsample_ref_ind = 1:reference_over_sampling:min(reference_over_sampling * (n_mpc_nodes + 1), size(ref_traj_chunk, 1));
+downsample_ref_ind = 1:reference_over_sampling:min(reference_over_sampling * (n_mpc_nodes + 1), size(ref_traj_chunk, 2));
 
 % Sparser references (same dt as node separation)
-ref_traj_chunk = ref_traj_chunk(downsample_ref_ind, :);
-ref_u_chunk = ref_u_chunk(downsample_ref_ind(1:max(length(downsample_ref_ind) - 1, 1)), :);
+ref_traj_chunk = ref_traj_chunk(:, downsample_ref_ind);
+ref_u_chunk = ref_u_chunk(:, downsample_ref_ind(1:max(length(downsample_ref_ind) - 1, 1)));
 end

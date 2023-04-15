@@ -74,6 +74,6 @@ traj(3, 3, :) = 16.0 * z_dim * (w_vec.^2 .* c4a + alpha_vec .* s4a);
 
 yaw = [];
 
-[traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj, yaw, t_ref, quad);
-trajectory = struct('states', traj_ref, 'inputs', u_ref, 'time', t_ref);
+[traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj, yaw, t_ref, 'QuadMass', quad.mass);
+trajectory = struct('states', traj_ref.', 'inputs', u_ref.', 'time', t_ref);
 end
