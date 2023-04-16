@@ -4,7 +4,7 @@ function setup(varargin)
 
 p = inputParser;
 p.addOptional("acados_root", getenv("ACADOS_SOURCE_DIR"), @isstring);
-p.addParameter("build_dir", "", @isstring);
+p.addParameter("build_dir", "build", @isstring);
 [varargin{:}] = convertCharsToStrings(varargin{:});
 p.parse(varargin{:});
 
@@ -14,30 +14,27 @@ setenv("ACADOS_INSTALL_DIR", acados_root);
 acados_dirs = ["/external/casadi-matlab/", ...
     "/interfaces/acados_matlab_octave/", ...
     "/interfaces/acados_matlab_octave/acados_template_mex/"];
-acados_dirs = arrayfun(@(it) strcat(acados_root, it), acados_dirs);
-acados_dirs = arrayfun(@(it) string(what(it).path), acados_dirs);
 
 curr_path = path;
-for it = acados_dirs
-    if contains(curr_path, it)
-        fprintf("OK: %s is already on path\n", it);
+for i = 1:numel(acados_dirs)
+    acados_dir_path = fullfile(acados_root, acados_dirs(i));
+    if ~exist(acados_dir_path, "dir")
+        error("%s does not exist!", acados_dir_path);
+    end    
+    if contains(curr_path, acados_dir_path)
+        fprintf("OK: %s is already on path\n", acados_dir_path);
     else
-        addpath(it);
+        addpath(acados_dir_path);
     end
 end
 
-if startsWith(p.Results.build_dir, "/")
-    build_dir = p.Results.build_dir;
-else
-    build_dir = strcat("/", p.Results.build_dir);
-end
-
+build_dir = p.Results.build_dir;
 ld_run_path = getenv("LD_RUN_PATH");
-link_dirs = [strcat(acados_root, "/lib"), strcat(pwd, build_dir)];
+link_dirs = [fullfile(acados_root, "lib"), fullfile(pwd, build_dir)];
 link_dirs = arrayfun(@(it) string(what(it).path), link_dirs);
 for it = link_dirs
-    if isempty(it)
-        warning("Attempting to add empty directory to LD_RUN_PATH");
+    if it == ""
+        error("Attempting to add empty directory to LD_RUN_PATH");
     end
     if contains(ld_run_path, it)
         fprintf("OK: %s is already in LD_RUN_PATH\n", it);

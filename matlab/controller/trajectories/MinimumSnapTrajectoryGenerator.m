@@ -92,7 +92,6 @@ else
     end
     rate(:) = w_int;
 
-    fprintf("Maximum yawrate before adaption: %.3f\n", max(abs(rate(:, 3))));
     q_new = q;
     yaw_corr_acc = 0.0;
     for i = 2:len_traj
@@ -109,7 +108,6 @@ else
 
     q = q_new;
     rate(:) = w_int;
-    fprintf("Maximum yawrate after adaption: %.3f\n", max(abs(rate(:, 3))));
 
 end
 % Compute inputs

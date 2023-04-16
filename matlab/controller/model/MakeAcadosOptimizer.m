@@ -7,7 +7,7 @@ p.addRequired('q_cost', @isvector);
 p.addRequired('r_cost', @isvector);
 p.addRequired('bounds', @ismatrix)
 p.addOptional('model_name', 'uav', @ischar);
-p.addOptional('build_dir', 'build/uav', @ischar);
+p.addOptional('build_dir', 'build', @ischar);
 
 p.parse(t_horizon, n_nodes, q_cost, r_cost, bounds, varargin{:});
 model_name = p.Results.model_name;
