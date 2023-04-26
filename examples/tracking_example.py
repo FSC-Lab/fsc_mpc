@@ -7,8 +7,9 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import numpy as np
+from fscore import quadrotor_model
 
-from quadrotor_mpc import acados_wrapper, quadrotor_model, trajectory_generator
+from quadrotor_mpc import acados_wrapper, trajectory_generator
 
 
 def parse_cli():
@@ -133,7 +134,9 @@ def main():
         model, solver, trajectory, reference_over_sampling, profile_data=True
     )
     tracking_rmse = np.mean(
-        np.sqrt(np.sum((trajectory.states[:, :3] - yout["states"][:, :3]) ** 2, axis=1))
+        np.sqrt(
+            np.sum((trajectory.states[0:3, :] - yout["states"][0:3, :]) ** 2, axis=1)
+        )
     )
 
     _ = acados_wrapper.utils.visualize_tracking_results(

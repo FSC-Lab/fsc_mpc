@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+
 from quadrotor_mpc import acados_wrapper
 
 

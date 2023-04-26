@@ -8,11 +8,10 @@ from os import PathLike
 from typing import Dict, Optional, Union
 
 import casadi as cs
+import fscore as fsc
 import numpy as np
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from numpy.typing import ArrayLike
-
-from quadrotor_mpc.quadrotor_model import DEFAULT_INPUT, DEFAULT_STATE, QuadrotorModel
 
 DEFAULT_Q_COST = np.array(
     [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05], dtype=np.float64
@@ -35,7 +34,7 @@ def make_quadrotor_model(
     x = cs.MX.sym("x", 10)  # type: ignore
     u = cs.MX.sym("u", 4)  # type: ignore
 
-    model = QuadrotorModel(mass)
+    model = fsc.quadrotor_model.QuadrotorModel(mass)
     f_expl = model.symbolic_derivatives(x, u)
     x_dot = cs.MX.sym("x_dot", f_expl.shape)  # type: ignore
     f_impl = x_dot - f_expl
@@ -112,11 +111,13 @@ class AcadosWrapper:
         ocp.cost.Vu = np.r_[np.zeros((cls._nx, cls._nu)), np.eye(cls._nu)]
         ocp.cost.Vx_e = np.eye(cls._nx)
         # Initial reference trajectory (will be overwritten)
-        ocp.cost.yref = np.concatenate((DEFAULT_STATE, DEFAULT_INPUT))
-        ocp.cost.yref_e = DEFAULT_STATE
+        ocp.cost.yref = np.concatenate(
+            (fsc.quadrotor_model.DEFAULT_STATE, fsc.quadrotor_model.DEFAULT_INPUT)
+        )
+        ocp.cost.yref_e = fsc.quadrotor_model.DEFAULT_STATE
 
         # Initial state (will be overwritten)
-        ocp.constraints.x0 = DEFAULT_STATE
+        ocp.constraints.x0 = fsc.quadrotor_model.DEFAULT_STATE
 
         # Set constraints
         lbu = np.asarray(lbu, dtype=np.float64)
@@ -198,8 +199,8 @@ class AcadosWrapper:
 
         x_reference = np.asarray(x_reference, dtype=np.float64)
         u_reference = np.asarray(u_reference, dtype=np.float64)
-        n_x_samples, nx = x_reference.shape
-        n_u_samples, nu = u_reference.shape
+        n_x_samples = x_reference.shape[1]
+        n_u_samples = u_reference.shape[1]
         if n_x_samples not in (n_u_samples + 1, n_u_samples):
             raise AcadosWrapperException(
                 f"Number of state ({n_x_samples}) and input ({n_u_samples}) references"
@@ -210,19 +211,19 @@ class AcadosWrapper:
         # length is met
         if n_x_samples < self.n_nodes + 1:
             x_reference = np.pad(
-                x_reference, ((0, self.n_nodes + 1 - n_x_samples), (0, 0)), "edge"
+                x_reference, ((0, 0), (0, self.n_nodes + 1 - n_x_samples)), "edge"
             )
             u_reference = np.pad(
-                u_reference, ((0, self.n_nodes - n_u_samples), (0, 0)), "edge"
+                u_reference, ((0, 0), (0, self.n_nodes - n_u_samples)), "edge"
             )
 
         ref = np.empty(self._ny)
         for j in range(self.n_nodes):
-            ref[0 : self._nx] = x_reference[j, :]
-            ref[self._nx :] = u_reference[j, :]
+            ref[0 : self._nx] = x_reference[:, j]
+            ref[self._nx :] = u_reference[:, j]
             self._solver.set(j, "yref", ref)
         # the last MPC node has only a state reference but no input reference
-        self._solver.set(self.n_nodes, "yref", x_reference[self.n_nodes, :])
+        self._solver.set(self.n_nodes, "yref", x_reference[:, self.n_nodes])
 
     def set_reference_state(self, x_reference, u_reference):
         ref = np.concatenate((np.asarray(x_reference), np.asarray(u_reference)))
@@ -241,11 +242,11 @@ class AcadosWrapper:
         self._solver.solve_for_x0(x_init)
 
         # Get u
-        w_opt_acados = np.empty((self.n_nodes, 4))
-        x_opt_acados = np.empty((self.n_nodes + 1, len(x_init)))
-        x_opt_acados[0, :] = self._solver.get(0, "x")
+        w_opt_acados = np.empty((4, self.n_nodes))
+        x_opt_acados = np.empty((len(x_init), self.n_nodes + 1))
+        x_opt_acados[:, 0] = self._solver.get(0, "x")
         for i in range(self.n_nodes):
-            w_opt_acados[i, :] = self._solver.get(i, "u")
-            x_opt_acados[i + 1, :] = self._solver.get(i + 1, "x")
+            w_opt_acados[:, i] = self._solver.get(i, "u")
+            x_opt_acados[:, i + 1] = self._solver.get(i + 1, "x")
 
         return w_opt_acados, x_opt_acados

@@ -1,5 +1,1 @@
-from .trajectories import (
-    lemniscate_trajectory,
-    loop_trajectory,
-    straight_trajectory,
-)
+from .trajectories import lemniscate_trajectory, loop_trajectory, straight_trajectory

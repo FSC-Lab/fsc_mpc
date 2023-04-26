@@ -4,17 +4,20 @@
 # https://opensource.org/licenses/MIT
 
 import time
-import numpy as np
-from scipy.spatial.transform import Rotation
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import tqdm
 
-from quadrotor_mpc import acados_wrapper, quadrotor_model, trajectory_generator
+import fscore as fsc
+import matplotlib.pyplot as plt
+import numpy as np
+import tqdm
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.spatial.transform import Rotation
+
+from .. import trajectory_generator
+from . import acados_wrapper
 
 
 def run_simulation(
-    model: quadrotor_model.QuadrotorModel,
+    model: fsc.quadrotor_model.QuadrotorModel,
     solver: acados_wrapper.AcadosWrapper,
     trajectory: trajectory_generator.trajectories.Trajectory,
     reference_over_sampling: int,
@@ -22,10 +25,10 @@ def run_simulation(
 ):
     simulation_dt = 5e-4
     # Set quad initial state equal to the initial reference trajectory state
-    quad_current_state = trajectory.states[0, :]
+    quad_current_state = trajectory.states[:, 0]
     model.state = quad_current_state
 
-    u_setpoint = trajectory.inputs[0, :]
+    u_setpoint = trajectory.inputs[:, 0]
 
     # Sliding reference trajectory initial index
     current_idx = 0
@@ -67,7 +70,7 @@ def run_simulation(
             yout["solve_time"].append(time.time() - t1)
         tout.append(t1)
         # MPC applies only first optimized input to the plant
-        u_setpoint = u_optimized[0, :]
+        u_setpoint = u_optimized[:, 0]
         yout["inputs"].append(u_setpoint)
 
         simulation_time = 0.0
@@ -80,7 +83,7 @@ def run_simulation(
             model.model_update(u_setpoint, simulation_dt)
 
     tout = np.asarray(tout)
-    yout = {k: np.asarray(v, dtype=np.float64) for k, v in yout.items()}
+    yout = {k: np.column_stack(v) for k, v in yout.items()}
 
     return tout, yout
 
@@ -103,26 +106,26 @@ def visualize_tracking_results(
 
     expect_states = trajectory.states
     result_states = yout["states"]
-    expect_position = expect_states[:, 0:3]
-    result_position = result_states[:, 0:3]
+    expect_position = expect_states[0:3, :]
+    result_position = result_states[0:3, :]
 
-    expect_attitude = expect_states[:, 3:7]
-    result_attitude = result_states[:, 3:7]
+    expect_attitude = expect_states[3:7, :]
+    result_attitude = result_states[3:7, :]
 
-    expect_velocity = expect_states[:, 7:10]
-    result_velocity = result_states[:, 7:10]
+    expect_velocity = expect_states[7:10, :]
+    result_velocity = result_states[7:10, :]
 
     ax.plot(
-        expect_position[:, 0],
-        expect_position[:, 1],
-        expect_position[:, 2],
+        expect_position[0, :],
+        expect_position[1, :],
+        expect_position[2, :],
         linewidth=2,
         label="Trajectory Reference",
     )
     ax.plot(
-        result_position[:, 0],
-        result_position[:, 1],
-        result_position[:, 2],
+        result_position[0, :],
+        result_position[1, :],
+        result_position[2, :],
         "--",
         linewidth=2,
         label="Simulated Trajectory",
@@ -131,15 +134,17 @@ def visualize_tracking_results(
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Y (m)")
     ax.set_zlabel("Z (m)")  # type: ignore
-    mean_z = expect_position[:, 2].mean()
+    mean_z = expect_position[2, :].mean()
     ax.set_zlim(mean_z - 1, mean_z + 1)
 
     position_error = np.abs(expect_position - result_position)
     attitude_error = np.abs(
         (
-            Rotation.from_quat(expect_attitude)
-            * Rotation.from_quat(result_attitude).inv()
-        ).as_rotvec()
+            Rotation.from_quat(expect_attitude.T)
+            * Rotation.from_quat(result_attitude.T).inv()
+        )
+        .as_rotvec()
+        .T
     )
 
     velocity_error = np.abs(expect_velocity - result_velocity)
@@ -153,34 +158,34 @@ def visualize_tracking_results(
     for idx, it in enumerate("XYZ"):
         ax[0].plot(
             tout,
-            position_error[:, idx],
+            position_error[idx, :],
             alpha=0.5,
             label=f"{it}-axis absolute position error",
         )
         ax[0].axhline(
-            position_error[:, idx].mean(),
+            position_error[idx, :].mean(),
             color=f"C{idx}",
             label=f"{it}-axis position MAE",
         )
         ax[1].plot(
             tout,
-            attitude_error[:, idx],
+            attitude_error[idx, :],
             alpha=0.5,
             label=f"{it}-axis absolute angular error",
         )
         ax[1].axhline(
-            attitude_error[:, idx].mean(),
+            attitude_error[idx, :].mean(),
             color=f"C{idx}",
             label=f"{it}-axis attitude MAE",
         )
         ax[2].plot(
             tout,
-            velocity_error[:, idx],
+            velocity_error[idx, :],
             alpha=0.5,
             label=f"{it}-axis absolute velocity error",
         )
         ax[2].axhline(
-            velocity_error[:, idx].mean(),
+            velocity_error[idx, :].mean(),
             color=f"C{idx}",
             label=f"{it}-axis velocity MAE",
         )

@@ -24,15 +24,14 @@ from __future__ import annotations
 import dataclasses
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
-
-from quadrotor_mpc.rotation import (
+from fscore.rotation import (
     quaternion_conjugate,
     quaternion_product,
     quaternion_rotate_point,
     rotation_matrix_to_quaternion,
     undo_quaternion_flip,
 )
+from numpy.typing import ArrayLike, NDArray
 
 
 @dataclasses.dataclass
@@ -62,22 +61,22 @@ class Trajectory:
     def get_reference_chunk(self, idx: int, n_nodes: int, reference_over_sampling: int):
         # Dense references
         ref_traj_chunk = self.states[
-            idx : idx + (n_nodes + 1) * reference_over_sampling, :
+            :, idx : idx + (n_nodes + 1) * reference_over_sampling
         ]
-        ref_u_chunk = self.inputs[idx : idx + n_nodes * reference_over_sampling, :]
+        ref_u_chunk = self.inputs[:, idx : idx + n_nodes * reference_over_sampling]
 
         # Indices for down-sampling the reference to number of MPC nodes
         downsample_ref_ind = np.arange(
             0,
-            min(reference_over_sampling * (n_nodes + 1), ref_traj_chunk.shape[0]),
+            min(reference_over_sampling * (n_nodes + 1), ref_traj_chunk.shape[1]),
             reference_over_sampling,
             dtype=int,
         )
 
         # Sparser references (same dt as node separation)
-        ref_traj_chunk = ref_traj_chunk[downsample_ref_ind, :]
+        ref_traj_chunk = ref_traj_chunk[:, downsample_ref_ind]
         ref_u_chunk = ref_u_chunk[
-            downsample_ref_ind[: max(len(downsample_ref_ind) - 1, 1)], :
+            :, downsample_ref_ind[: max(len(downsample_ref_ind) - 1, 1)]
         ]
 
         return ref_traj_chunk, ref_u_chunk
@@ -127,117 +126,108 @@ def minimum_snap_trajectory_generator(
 
     # Add gravity to accelerations
     gravity = 9.81
-    thrust = (
-        traj_derivatives[2, :, :].T
-        + np.tile(np.array([[0, 0, 1]]), (len_traj, 1)) * gravity
-    )
+    thrust = traj_derivatives[2, :, :] + np.array([[0], [0], [1]]) * gravity
     # Compute body axes
-    z_b = thrust / np.linalg.norm(thrust, axis=1, keepdims=True)
+    z_b = thrust / np.linalg.norm(thrust, axis=0, keepdims=True)
 
     yawing = np.any(yaw_derivatives[0, :] != 0)
 
-    rate = np.zeros((len_traj, 3))
-    f_t = np.zeros((len_traj, 1))
-    for i in range(len_traj):
-        f_t[i, 0] = quadrotor_mass * z_b[i].dot(thrust[i, :].T)
+    rate = np.zeros((3, len_traj))
+    f_t = quadrotor_mass * np.sum(z_b * thrust, axis=0)
 
     if yawing:
         # yaw is defined as the projection of the body-x axis on the horizontal plane
-        x_c = np.concatenate(
+        x_c = np.row_stack(
             (
-                np.cos(yaw_derivatives[0, :])[:, np.newaxis],
-                np.sin(yaw_derivatives[0, :])[:, np.newaxis],
-                np.zeros(len_traj)[:, np.newaxis],
+                np.cos(yaw_derivatives[0, :]),
+                np.sin(yaw_derivatives[0, :]),
+                np.zeros(len_traj),
             ),
-            1,
         )
-        y_b = np.cross(z_b, x_c)
-        y_b = y_b / np.linalg.norm(y_b, axis=1, keepdims=True)
-        x_b = np.cross(y_b, z_b)
+        y_b = np.cross(z_b, x_c, axis=0)
+        y_b = y_b / np.linalg.norm(y_b, axis=0, keepdims=True)
+        x_b = np.cross(y_b, z_b, axis=0)
 
         # Rotation matrix (from body to world)
-        b_r_w = np.dstack((x_b, y_b, z_b))
+        b_r_w = np.moveaxis(np.dstack((x_b, y_b, z_b)), 1, -1)
         q = []
         for i in range(len_traj):
             # Transform to quaternion
-            q.append(rotation_matrix_to_quaternion(b_r_w[i]))
+            q.append(rotation_matrix_to_quaternion(b_r_w[:, :, i]))
             if i > 1:
                 q[-1] = undo_quaternion_flip(q[-2], q[-1])
-        q = np.stack(q)
+        q = np.column_stack(q)
 
         # Compute angular rate vector
         # Total thrust acceleration must be equal to the projection of the quadrotor
         # acceleration into the Z body axis
-        a_proj = np.zeros((len_traj, 1))
+        a_proj = np.sum(z_b * traj_derivatives[3, :, :], axis=0)
 
-        for i in range(len_traj):
-            a_proj[i, 0] = z_b[i].dot(traj_derivatives[3, :, i])
-
-        h_omega = quadrotor_mass / f_t * (traj_derivatives[3, :, :].T - a_proj * z_b)
-        for i in range(len_traj):
-            rate[i, 0] = -h_omega[i].dot(y_b[i])
-            rate[i, 1] = h_omega[i].dot(x_b[i])
-            rate[i, 2] = -yaw_derivatives[1, i] * np.array([0, 0, 1]).dot(z_b[i])
+        h_omega = quadrotor_mass / f_t * (traj_derivatives[3, :, :] - a_proj * z_b)
+        rate[0, :] = np.sum(-h_omega * y_b, axis=0)
+        rate[1, :] = np.sum(h_omega * x_b, axis=0)
+        rate[2, :] = -yaw_derivatives[1, :] * np.sum(
+            np.array([[0.0], [0.0], [1.0]]) * z_b, axis=0
+        )
 
     else:
         # new way to compute attitude:
         # https://math.stackexchange.com/questions/2251214/calculate-quaternions-from-two-directional-vectors
-        e_z = np.array([[0.0, 0.0, 1.0]])
-        q_w = 1.0 + np.sum(e_z * z_b, axis=1)
-        q_xyz = np.cross(e_z, z_b)
-        q = 0.5 * np.concatenate([q_xyz, np.expand_dims(q_w, axis=1)], axis=1)
-        q = q / np.linalg.norm(q, axis=1, keepdims=True)
+        e_z = np.array([[0.0], [0.0], [1.0]])
+        q_w = 1.0 + np.sum(e_z * z_b, axis=0)
+        q_xyz = np.cross(e_z, z_b, axis=0)
+        q = 0.5 * np.row_stack((q_xyz, q_w))
+        q = q / np.linalg.norm(q, axis=0, keepdims=True)
 
         # Use numerical differentiation of quaternions
-        q_dot = np.gradient(q, axis=0) / discretization_dt
-        w_int = np.zeros((len_traj, 3))
+        q_dot = np.gradient(q, axis=1) / discretization_dt
+        w_int = np.zeros((3, len_traj))
         for i in range(len_traj):
-            w_int[i, :] = (
-                2.0 * quaternion_product(quaternion_conjugate(q[i, :]), q_dot[i])[:3]
+            w_int[:, i] = (
+                2.0 * quaternion_product(quaternion_conjugate(q[:, i]), q_dot[:, i])[:3]
             )
-        rate[:, 0] = w_int[:, 0]
-        rate[:, 1] = w_int[:, 1]
-        rate[:, 2] = w_int[:, 2]
+        rate[0, :] = w_int[0, :]
+        rate[1, :] = w_int[1, :]
+        rate[2, :] = w_int[2, :]
 
-        print("Maximum yawrate before adaption: %.3f" % np.max(np.abs(rate[:, 2])))
         q_new = q
         yaw_corr_acc = 0.0
         for i in range(1, len_traj):
-            yaw_corr = -rate[i, 2] * discretization_dt
+            yaw_corr = -rate[2, i] * discretization_dt
             yaw_corr_acc += yaw_corr
             q_corr = np.array(
                 [0.0, 0.0, np.sin(yaw_corr_acc / 2.0), np.cos(yaw_corr_acc / 2.0)]
             )
-            q_new[i, :] = quaternion_product(q[i, :], q_corr)
-            w_int[i, :] = (
-                2.0 * quaternion_product(quaternion_conjugate(q[i, :]), q_dot[i])[:3]
+            q_new[:, i] = quaternion_product(q[:, i], q_corr)
+            w_int[:, i] = (
+                2.0 * quaternion_product(quaternion_conjugate(q[:, i]), q_dot[:, i])[:3]
             )
 
-        q_new_dot = np.gradient(q_new, axis=0) / discretization_dt
+        q_new_dot = np.gradient(q_new, axis=1) / discretization_dt
         for i in range(1, len_traj):
-            w_int[i, :] = (
+            w_int[:, i] = (
                 2.0
-                * quaternion_product(quaternion_conjugate(q_new[i, :]), q_new_dot[i])[
-                    :3
-                ]
+                * quaternion_product(
+                    quaternion_conjugate(q_new[:, i]), q_new_dot[:, i]
+                )[:3]
             )
 
         q = q_new
-        rate[:, 0] = w_int[:, 0]
-        rate[:, 1] = w_int[:, 1]
-        rate[:, 2] = w_int[:, 2]
+        rate[0, :] = w_int[0, :]
+        rate[1, :] = w_int[1, :]
+        rate[2, :] = w_int[2, :]
         print("Maximum yawrate after adaption: %.3f" % np.max(np.abs(rate[:, 2])))
 
     # Compute inputs
-    u_ref = np.column_stack((f_t, rate))
+    u_ref = np.row_stack((f_t, rate))
 
-    full_pos = traj_derivatives[0, :, :].T
-    full_vel = traj_derivatives[1, :, :].T
+    full_pos = traj_derivatives[0, :, :]
+    full_vel = traj_derivatives[1, :, :]
     if body_frame_coordinates:
-        q[:, 0:3] = -q[:, 0:3]
+        q[0:3, :] = -q[0:3, :]
         for idx in range(len_traj):
-            full_vel[idx, :] = quaternion_rotate_point(q[idx, :], full_vel[idx, :])
-    traj_ref = np.concatenate((full_pos, q, full_vel), 1)
+            full_vel[:, idx] = quaternion_rotate_point(q[:, idx], full_vel[:, idx])
+    traj_ref = np.row_stack((full_pos, q, full_vel))
 
     return Trajectory(traj_ref, u_ref, t_ref)
 
@@ -403,24 +393,18 @@ def loop_trajectory(
     angle_vec = np.cumsum(w_vec) * discretization_dt
 
     # Compute position, velocity, acceleration, jerk
-    pos_traj_x = radius * np.sin(angle_vec)[np.newaxis, np.newaxis, :]
-    pos_traj_y = radius * np.cos(angle_vec)[np.newaxis, np.newaxis, :]
+    pos_traj_x = radius * np.sin(angle_vec)
+    pos_traj_y = radius * np.cos(angle_vec)
     pos_traj_z = np.ones_like(pos_traj_x) * z
 
-    vel_traj_x = (radius * w_vec * np.cos(angle_vec))[np.newaxis, np.newaxis, :]
-    vel_traj_y = -(radius * w_vec * np.sin(angle_vec))[np.newaxis, np.newaxis, :]
+    vel_traj_x = radius * w_vec * np.cos(angle_vec)
+    vel_traj_y = -(radius * w_vec * np.sin(angle_vec))
 
-    acc_traj_x = (
-        radius
-        * (alpha_vec * np.cos(angle_vec) - w_vec**2 * np.sin(angle_vec))[
-            np.newaxis, np.newaxis, :
-        ]
+    acc_traj_x = radius * (
+        alpha_vec * np.cos(angle_vec) - w_vec**2 * np.sin(angle_vec)
     )
-    acc_traj_y = (
-        -radius
-        * (alpha_vec * np.sin(angle_vec) + w_vec**2 * np.cos(angle_vec))[
-            np.newaxis, np.newaxis, :
-        ]
+    acc_traj_y = -radius * (
+        alpha_vec * np.sin(angle_vec) + w_vec**2 * np.cos(angle_vec)
     )
 
     jerk_traj_x = radius * (
@@ -435,8 +419,6 @@ def loop_trajectory(
         - np.sin(angle_vec) * w_vec**3
         + 2 * np.cos(angle_vec) * w_vec * alpha_vec
     )
-    jerk_traj_x = jerk_traj_x[np.newaxis, np.newaxis, :]
-    jerk_traj_y = jerk_traj_y[np.newaxis, np.newaxis, :]
 
     if yawing:
         yaw_traj = -angle_vec
@@ -445,15 +427,21 @@ def loop_trajectory(
 
     traj = np.concatenate(
         (
-            np.concatenate((pos_traj_x, pos_traj_y, pos_traj_z), 1),
-            np.concatenate((vel_traj_x, vel_traj_y, np.zeros_like(vel_traj_x)), 1),
-            np.concatenate((acc_traj_x, acc_traj_y, np.zeros_like(acc_traj_x)), 1),
-            np.concatenate((jerk_traj_x, jerk_traj_y, np.zeros_like(jerk_traj_x)), 1),
+            np.row_stack((pos_traj_x, pos_traj_y, pos_traj_z))[None, ...],
+            np.row_stack((vel_traj_x, vel_traj_y, np.zeros_like(vel_traj_x)))[
+                None, ...
+            ],
+            np.row_stack((acc_traj_x, acc_traj_y, np.zeros_like(acc_traj_x)))[
+                None, ...
+            ],
+            np.row_stack((jerk_traj_x, jerk_traj_y, np.zeros_like(jerk_traj_x)))[
+                None, ...
+            ],
         ),
         0,
     )
 
-    yaw = np.concatenate((yaw_traj[np.newaxis, :], w_vec[np.newaxis, :]), 0)
+    yaw = np.row_stack((yaw_traj, w_vec))
 
     if trajectory_kw is None:
         trajectory_kw = {}
