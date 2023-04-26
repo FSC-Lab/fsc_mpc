@@ -5,14 +5,15 @@
 
 import numpy as np
 import pytest
-from numpy.typing import ArrayLike
-
-from quadrotor_mpc import quadrotor_model, trajectory_generator
-from quadrotor_mpc.rotation import (
+from fscore import quadrotor_model
+from fscore.rotation import (
     quaternion_conjugate,
     quaternion_product,
     quaternion_rotate_point,
 )
+from numpy.typing import ArrayLike
+
+from quadrotor_mpc import trajectory_generator
 
 
 def check_trajectory(
