@@ -1,4 +1,14 @@
-function trajectory = LemniscateTrajectory(quad, discretization_dt, radius, z, lin_acc, v_max)
+function trajectory = LemniscateTrajectory(discretization_dt, radius, alt, lin_acc, v_max, options)
+
+arguments
+    discretization_dt double
+    radius double
+    alt double
+    lin_acc double
+    v_max double
+    options.QuadMass double = 1.0
+    options.UseBodyFrameDynamics logical = true
+end
 
 % Apply map limits to radius
 ramp_up_t = 2; % s
@@ -45,7 +55,7 @@ angle_vec = cumsum(w_vec) * discretization_dt;
 z_dim = 0.0;
 
 % Compute position, velocity, acceleration, jerk
-traj = zeros(3, 3, length(angle_vec));
+traj = zeros(4, 3, length(angle_vec));
 
 ca = cos(angle_vec);
 sa = sin(angle_vec);
@@ -55,7 +65,7 @@ s4a = sin(4.0 * angle_vec);
 % position block
 traj(1, 1, :) = radius * ca;
 traj(1, 2, :) = radius * (sa .* ca);
-traj(1, 3, :) = -z_dim * c4a + z;
+traj(1, 3, :) = -z_dim * c4a + alt;
 
 % velocity block
 traj(2, 1, :) = -radius * (w_vec .* sa);
@@ -74,6 +84,7 @@ traj(3, 3, :) = 16.0 * z_dim * (w_vec.^2 .* c4a + alpha_vec .* s4a);
 
 yaw = [];
 
-[traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj, yaw, t_ref, 'QuadMass', quad.mass);
-trajectory = struct('states', traj_ref.', 'inputs', u_ref.', 'time', t_ref);
+options = namedargs2cell(options);
+[traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj, yaw, t_ref, options{:});
+trajectory = struct('states', traj_ref, 'inputs', u_ref, 'time', t_ref);
 end

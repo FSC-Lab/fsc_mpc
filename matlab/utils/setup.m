@@ -31,7 +31,7 @@ end
 build_dir = p.Results.build_dir;
 ld_run_path = getenv("LD_RUN_PATH");
 link_dirs = [fullfile(acados_root, "lib"), fullfile(pwd, build_dir)];
-link_dirs = arrayfun(@(it) string(what(it).path), link_dirs);
+link_dirs = arrayfun(@(it) string(it), link_dirs);
 for it = link_dirs
     if it == ""
         error("Attempting to add empty directory to LD_RUN_PATH");

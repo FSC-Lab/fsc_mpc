@@ -1,26 +1,24 @@
-function [tout, yout] = RunSimulation(ocp, trajectory, varargin)
+function [tout, yout] = RunSimulation(ocp, trajectory, update_fcn, options)
 %RUNSIMULATION Summary of this function goes here
 %   Detailed explanation goes here
 % Simulation integration step (the smaller the more "continuous"-like simulation.
 
-p = inputParser;
-p.addRequired('ocp', @(arg) isa(arg, 'acados_ocp'));
-p.addRequired('trajectory', @ismatrix);
-p.addOptional('update_fcn', @QuadrotorSO3Update);
-p.addParameter('vehicle_mass', 1.0, @(arg) isscalar(arg) && arg >= 0);
-p.addParameter('reference_over_sampling', 5, @(arg) isscalar(arg) && arg >= 0);
-p.addParameter('simulation_dt', [], @(arg) isempty(arg) || (isscalar(arg) && arg > 0));
+arguments
+    ocp acados_ocp
+    trajectory struct
+    update_fcn = @QuadrotorSO3Update
+    options.QuadMass {mustBePositive} = 1.0
+    options.reference_over_sampling {mustBePositive} = 5
+    options.simulation_dt double = []
+end
 
-p.parse(ocp, trajectory, varargin{:});
-
-update_fcn = p.Results.update_fcn;
-reference_over_sampling = p.Results.reference_over_sampling;
-simulation_dt = p.Results.simulation_dt;
+reference_over_sampling = options.reference_over_sampling;
+simulation_dt = options.simulation_dt;
 
 n_mpc_nodes = ocp.opts_struct.param_scheme_N;
 quad_current_state = trajectory.states(:, 1);
 
-quad.mass = p.Results.vehicle_mass;
+quad.mass = options.QuadMass;
 quad.x = quad_current_state;
 
 t_length = length(trajectory.time);

@@ -1,4 +1,4 @@
-function [traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj_derivatives, yaw_derivatives, t_ref, varargin)
+function [traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj_derivatives, yaw_derivatives, t_ref, options)
 %     Follows the Minimum Snap Trajectory paper to generate a full trajectory given the position reference and its
 %     derivatives, and the yaw trajectory and its derivatives.
 %
@@ -17,31 +17,30 @@ function [traj_ref, u_ref, t_ref] = MinimumSnapTrajectoryGenerator(traj_derivati
 %         attitude_quaternion_wxyz, velocity_xyz, body_rate_xyz.
 %         - N array of reference timestamps. The same as in the input
 %         - Nx4 array of reference controls, corresponding to the four motors of the quadrotor.
-p = inputParser;
-addRequired(p, 'traj_derivatives');
-addRequired(p, 'yaw_derivative');
-addRequired(p, 't_ref');
-addParameter(p, 'QuadMass', 1.0);
-addParameter(p, 'StartAtZero', false);
-addParameter(p, 'UseBodyFrameDynamics', false);
+arguments
+    traj_derivatives (4, 3, :)double
+    yaw_derivatives (2, :)double
+    t_ref (1, :)double
+    options.QuadMass double = 1.0;
+    options.UseBodyFrameDynamics logical = true
+    options.StartAtZero logical = false
+end
 
-parse(p, traj_derivatives, yaw_derivatives, t_ref, varargin{:});
 
-proj_V = [eye(3), zeros(3, 1)];
 GRAV_ACCEL = 9.81;
 
 discretization_dt = t_ref(2) - t_ref(1);
 len_traj = size(traj_derivatives, 3);
 
 % Add gravity to accelerations
-thrust = squeeze(traj_derivatives(3, :, :)).' + repmat([0, 0, GRAV_ACCEL], len_traj, 1);
+thrust = squeeze(traj_derivatives(3, :, :)) + [0; 0; GRAV_ACCEL];
 % Compute body axes
-z_b = thrust ./ vecnorm(thrust, 2, 2);
+z_b = thrust ./ vecnorm(thrust, 2);
 
 yawing = ~isempty(yaw_derivatives) && any(abs(yaw_derivatives(1, :)) > 1e-6); 
 
-rate = zeros(len_traj, 3);
-f_t = p.Results.QuadMass * sum(z_b .* thrust, 2);
+rate = zeros(3, len_traj);
+f_t = options.QuadMass * sum(z_b .* thrust);
 if yawing
     error("Not implemented");
     %         % yaw is defined as the projection of the body-x axis on the horizontal plane
@@ -77,33 +76,36 @@ if yawing
 else
     % new way to compute attitude:
     % https://math.stackexchange.com/questions/2251214/calculate-quaternions-from-two-directional-vectors
-    e_z = [0.0, 0.0, 1.0];
-    q_w = 1.0 + sum(e_z .* z_b, 2);
-    q_xyz = cross(repmat(e_z, len_traj, 1), z_b, 2);
-    q = 0.5 * [q_xyz, q_w];
-    q = q ./ vecnorm(q, 2, 2);
+    e_z = [0.0; 0.0; 1.0];
+    q_w = 1.0 + sum(e_z .* z_b);
+    q_xyz = cross(repmat(e_z, 1, len_traj), z_b);
+    q = 0.5 * [q_xyz; q_w];
+    q = q ./ vecnorm(q);
 
-    qinv = [-q(:, 1:3), q(:, 4)];
+    qinv = [-q(1:3, :); q(4, :)];
     % Use numerical differentiation of quaternions
-    q_dot = gradient(q.').' / discretization_dt;
-    w_int = zeros(len_traj, 3);
+    q_dot = gradient(q) / discretization_dt;
+    w_int = zeros(3, len_traj);
     for i = 1:len_traj
-        w_int(i, :) = proj_V * 2.0 * QuaternionProduct(qinv(i, :), q_dot(i, :));
+        w_tmp = 2.0 * QuaternionProduct(qinv(:, i), q_dot(:, i));
+        w_int(:, i) = w_tmp(1:3);
     end
     rate(:) = w_int;
 
     q_new = q;
     yaw_corr_acc = 0.0;
     for i = 2:len_traj
-        yaw_corr = -rate(i, 3) * discretization_dt;
+        yaw_corr = -rate(3, i) * discretization_dt;
         yaw_corr_acc = yaw_corr_acc + yaw_corr;
         q_corr = AngleAxisToQuaternion([0; 0; yaw_corr_acc]);
-        q_new(i, :) = QuaternionProduct(q(i, :), q_corr);
-        w_int(i, :) = proj_V * 2.0 * QuaternionProduct(qinv(i, :), q_dot(i, :));
+        q_new(:, i) = QuaternionProduct(q(:, i), q_corr);
+        w_tmp = 2.0 * QuaternionProduct(qinv(:, i), q_dot(:, i));
+        w_int(:, i) = w_tmp(1:3);
     end
-    q_new_dot = gradient(q_new.').' / discretization_dt;
+    q_new_dot = gradient(q_new) / discretization_dt;
     for i = 2:len_traj
-        w_int(i, :) = proj_V * 2.0 * QuaternionProduct(QuaternionInverse(q_new(i, :).').', q_new_dot(i, :));
+        w_tmp = 2.0 * QuaternionProduct(QuaternionInverse(q_new(:, i)), q_new_dot(:, i));
+        w_int(:, i) = w_tmp(1:3);
     end
 
     q = q_new;
@@ -111,21 +113,21 @@ else
 
 end
 % Compute inputs
-u_ref = [f_t, rate];
+u_ref = [f_t; rate];
 
-full_pos = squeeze(traj_derivatives(1, :, :)).';
-full_vel = squeeze(traj_derivatives(2, :, :)).';
+full_pos = squeeze(traj_derivatives(1, :, :));
+full_vel = squeeze(traj_derivatives(2, :, :));
 
-if p.Results.UseBodyFrameDynamics
-    q(:, 1:3) = -q(:, 1:3);
+if options.UseBodyFrameDynamics
+    q(1:3, :) = -q(1:3, :);
     for i = 1:len_traj
-        full_vel(i, :) = QuaternionRotatePoint(q(i, :), full_vel(i, :));
+        full_vel(:, i) = QuaternionRotatePoint(q(:, i), full_vel(:, i));
     end
 end
-traj_ref = [full_pos, q, full_vel];
+traj_ref = [full_pos; q; full_vel];
 
 % Locate starting point right at x=0 and y=0.
-if p.Results.StartAtZero
-    traj_ref(:, 1:2) = traj_ref(:, 1:2) - traj_ref(1, 1:2);
+if options.StartAtZero
+    traj_ref(1:2, :) = traj_ref(1:2, :) - traj_ref(1:2, 1);
 end
 end
