@@ -3,8 +3,6 @@ cmake_minimum_required(VERSION 3.14.0)
 
 option(BUILD_EXAMPLES "Build Examples" ON)
 
-set(CMAKE_CXX_CLANG_TIDY "clang-tidy")
-
 find_package(acados REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Python COMPONENTS Interpreter)
@@ -44,12 +42,14 @@ target_include_directories(solver_wrapper PUBLIC ${CODEGEN_DIR} include)
 target_link_libraries(solver_wrapper PUBLIC acados blasfeo hpipm)
 
 # Step 3: Compile the OOPified MPC solver
-add_library(quadrotor_mpc src/quadrotor_mpcpp/quadrotor_mpc.cpp)
-target_include_directories(quadrotor_mpc PUBLIC include)
-target_link_libraries(quadrotor_mpc PUBLIC Eigen3::Eigen solver_wrapper)
+add_library(quadrotor_mpc_quadrotor_mpc src/quadrotor_mpcpp/quadrotor_mpc.cpp)
+target_include_directories(quadrotor_mpc_quadrotor_mpc PUBLIC include)
+target_link_libraries(quadrotor_mpc_quadrotor_mpc PUBLIC Eigen3::Eigen
+                                                         solver_wrapper)
+
+add_library(quadrotor_mpc::quadrotor_mpc ALIAS quadrotor_mpc_quadrotor_mpc)
 
 include(CTest)
-enable_testing()
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()
