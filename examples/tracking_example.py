@@ -6,8 +6,8 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
+import fscore.simulation as sim
 import numpy as np
-from fscore import quadrotor_model
 
 from quadrotor_mpc import acados_wrapper, trajectory_generator
 
@@ -62,6 +62,9 @@ def parse_cli():
     return args
 
 
+QUADROTOR_MASS = 1.0
+
+
 def main():
     args = parse_cli()
 
@@ -70,14 +73,11 @@ def main():
     # Number of MPC optimization nodes
     n_mpc_nodes = 10
 
-    # Quadrotor simulator
-    model = quadrotor_model.QuadrotorModel(mass=1.0)
-
     # Recover some necessary variables from the MPC object
     reference_over_sampling = 5
     control_period = t_horizon / (n_mpc_nodes * reference_over_sampling)
 
-    params = {"body_frame_coordinates": True, "quadrotor_mass": model.mass}
+    params = {"body_frame_coordinates": True, "quadrotor_mass": QUADROTOR_MASS}
     if args.trajectory == "loop":
         trajectory = trajectory_generator.loop_trajectory(
             control_period,
@@ -114,6 +114,18 @@ def main():
         raise ValueError(
             f"Unknown trajectory {args.trajectory}. Options are `lemniscate` and `loop`"
         )
+
+    # Quadrotor simulator
+    simulation_dt = 5e-4
+    model = sim.SimpleQuadrotorSimulator(
+        mass=QUADROTOR_MASS,
+        base_dt=simulation_dt,
+        init_time=0.0,
+        init_state=np.array(trajectory.states[:, 0]),
+        init_input=np.zeros((4,)),
+        grav_accel=-9.81,
+        quaternion_normalization_gain=2.0,
+    )
 
     codegen_dir = Path(args.codegen_dir)
     # Initialize quad MPC

@@ -24,13 +24,7 @@ from __future__ import annotations
 import dataclasses
 
 import numpy as np
-from fscore.rotation import (
-    quaternion_conjugate,
-    quaternion_product,
-    quaternion_rotate_point,
-    rotation_matrix_to_quaternion,
-    undo_quaternion_flip,
-)
+from fscore.rotation import Quaternion
 from numpy.typing import ArrayLike, NDArray
 
 
@@ -58,7 +52,9 @@ class Trajectory:
     def time_interval(self):
         return np.diff(self.time)
 
-    def get_reference_chunk(self, idx: int, n_nodes: int, reference_over_sampling: int):
+    def get_reference_chunk(
+        self, idx: int, n_nodes: int, reference_over_sampling: int = 1
+    ):
         # Dense references
         ref_traj_chunk = self.states[
             :, idx : idx + (n_nodes + 1) * reference_over_sampling
@@ -80,6 +76,14 @@ class Trajectory:
         ]
 
         return ref_traj_chunk, ref_u_chunk
+
+
+def undo_quaternion_flip(q_past, q_current):
+    if np.sqrt(np.sum((q_past - q_current) ** 2)) > np.sqrt(
+        np.sum((q_past + q_current) ** 2)
+    ):
+        return -q_current
+    return q_current
 
 
 def minimum_snap_trajectory_generator(
@@ -153,7 +157,7 @@ def minimum_snap_trajectory_generator(
         q = []
         for i in range(len_traj):
             # Transform to quaternion
-            q.append(rotation_matrix_to_quaternion(b_r_w[:, :, i]))
+            q.append(Quaternion(b_r_w[:, :, i]))
             if i > 1:
                 q[-1] = undo_quaternion_flip(q[-2], q[-1])
         q = np.column_stack(q)
@@ -173,7 +177,7 @@ def minimum_snap_trajectory_generator(
     else:
         # new way to compute attitude:
         # https://math.stackexchange.com/questions/2251214/calculate-quaternions-from-two-directional-vectors
-        e_z = np.array([[0.0], [0.0], [1.0]])
+        e_z = np.array([[0.0], [0.0], [1.0]], dtype=np.float64)
         q_w = 1.0 + np.sum(e_z * z_b, axis=0)
         q_xyz = np.cross(e_z, z_b, axis=0)
         q = 0.5 * np.row_stack((q_xyz, q_w))
@@ -184,39 +188,32 @@ def minimum_snap_trajectory_generator(
         w_int = np.zeros((3, len_traj))
         for i in range(len_traj):
             w_int[:, i] = (
-                2.0 * quaternion_product(quaternion_conjugate(q[:, i]), q_dot[:, i])[:3]
+                2.0 * (Quaternion(q[:, i]).inverse() * Quaternion(q_dot[:, i])).vec
             )
-        rate[0, :] = w_int[0, :]
-        rate[1, :] = w_int[1, :]
-        rate[2, :] = w_int[2, :]
+        rate[:] = w_int
 
         q_new = q
         yaw_corr_acc = 0.0
         for i in range(1, len_traj):
             yaw_corr = -rate[2, i] * discretization_dt
             yaw_corr_acc += yaw_corr
-            q_corr = np.array(
+            q_corr = Quaternion(
                 [0.0, 0.0, np.sin(yaw_corr_acc / 2.0), np.cos(yaw_corr_acc / 2.0)]
             )
-            q_new[:, i] = quaternion_product(q[:, i], q_corr)
+            q_new[:, i] = (Quaternion(q[:, i]) * q_corr).coeffs
             w_int[:, i] = (
-                2.0 * quaternion_product(quaternion_conjugate(q[:, i]), q_dot[:, i])[:3]
+                2.0 * (Quaternion(q[:, i]).inverse() * Quaternion(q_dot[:, i])).vec
             )
 
         q_new_dot = np.gradient(q_new, axis=1) / discretization_dt
         for i in range(1, len_traj):
             w_int[:, i] = (
                 2.0
-                * quaternion_product(
-                    quaternion_conjugate(q_new[:, i]), q_new_dot[:, i]
-                )[:3]
+                * (Quaternion(q_new[:, i]).inverse() * Quaternion(q_new_dot[:, i])).vec
             )
 
-        q = q_new
-        rate[0, :] = w_int[0, :]
-        rate[1, :] = w_int[1, :]
-        rate[2, :] = w_int[2, :]
-        print("Maximum yawrate after adaption: %.3f" % np.max(np.abs(rate[:, 2])))
+        q[:] = q_new
+        rate[:] = w_int
 
     # Compute inputs
     u_ref = np.row_stack((f_t, rate))
@@ -226,7 +223,7 @@ def minimum_snap_trajectory_generator(
     if body_frame_coordinates:
         q[0:3, :] = -q[0:3, :]
         for idx in range(len_traj):
-            full_vel[:, idx] = quaternion_rotate_point(q[:, idx], full_vel[:, idx])
+            full_vel[:, idx] = Quaternion(q[:, idx]) * full_vel[:, idx]
     traj_ref = np.row_stack((full_pos, q, full_vel))
 
     return Trajectory(traj_ref, u_ref, t_ref)

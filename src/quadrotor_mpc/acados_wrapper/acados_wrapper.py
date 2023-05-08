@@ -10,8 +10,11 @@ from typing import Dict, Optional, Union
 import casadi as cs
 import fscore as fsc
 import numpy as np
+import scipy.linalg
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from numpy.typing import ArrayLike
+
+from .models import symbolic_quadrotor
 
 DEFAULT_Q_COST = np.array(
     [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05], dtype=np.float64
@@ -34,8 +37,8 @@ def make_quadrotor_model(
     x = cs.MX.sym("x", 10)  # type: ignore
     u = cs.MX.sym("u", 4)  # type: ignore
 
-    model = fsc.quadrotor_model.QuadrotorModel(mass)
-    f_expl = model.symbolic_derivatives(x, u)
+    model = symbolic_quadrotor.SymbolicQuadrotor(mass)
+    f_expl = model.model_derivatives(x, u)
     x_dot = cs.MX.sym("x_dot", f_expl.shape)  # type: ignore
     f_impl = x_dot - f_expl
 
@@ -64,6 +67,28 @@ class AcadosWrapper:
         self._nx = np.size(solver.get(0, "x"))
         self._nu = np.size(solver.get(0, "u"))
         self._ny = self._nx + self._nu
+
+    def reset(self, reset_qp_solver_mem=1):
+        self._solver.reset(reset_qp_solver_mem=reset_qp_solver_mem)
+
+    def set_costs(self, q_cost: ArrayLike, r_cost: ArrayLike):
+        q_cost = np.asarray(q_cost, dtype=np.float64)
+        r_cost = np.asarray(r_cost, dtype=np.float64)
+
+        if q_cost.ndim == 1 and r_cost.ndim == 1:
+            cost_mat = np.diag(np.concatenate((q_cost, r_cost)))
+            terminal_cost_mat = np.diag(q_cost)
+        elif q_cost.ndim == 2 and r_cost.ndim == 2:
+            cost_mat = scipy.linalg.blkdiag(q_cost, r_cost)
+            terminal_cost_mat = q_cost
+        else:
+            raise ValueError(
+                "q_cost and r_cost must both be 1D array of weights or 2D cost matrices"
+            )
+
+        for idx in range(self.n_nodes):
+            self._solver.cost_set(idx, "W", cost_mat)
+        self._solver.cost_set(self.n_nodes, "W", terminal_cost_mat)
 
     @classmethod
     def make_new(
@@ -96,13 +121,13 @@ class AcadosWrapper:
         q_cost = np.asarray(q_cost, dtype=np.float64).ravel()
         if q_cost.size != cls._nx:
             raise AcadosWrapperException(
-                "Number of state weights does not match the state dimension 10"
+                f"Number of state weights does not match the state dimension {cls._nx}"
             )
 
         r_cost = np.asarray(r_cost, dtype=np.float64).ravel()
         if r_cost.size != cls._nu:
             raise AcadosWrapperException(
-                "Number of input weights does not match the input dimension 4"
+                f"Number of input weights does not match the input dimension {cls._nu}"
             )
         ocp.cost.W = np.diag(np.r_[q_cost, r_cost])
         ocp.cost.W_e = np.diag(q_cost)
@@ -112,12 +137,12 @@ class AcadosWrapper:
         ocp.cost.Vx_e = np.eye(cls._nx)
         # Initial reference trajectory (will be overwritten)
         ocp.cost.yref = np.concatenate(
-            (fsc.quadrotor_model.DEFAULT_STATE, fsc.quadrotor_model.DEFAULT_INPUT)
+            (symbolic_quadrotor.DEFAULT_STATE, symbolic_quadrotor.DEFAULT_INPUT)
         )
-        ocp.cost.yref_e = fsc.quadrotor_model.DEFAULT_STATE
+        ocp.cost.yref_e = symbolic_quadrotor.DEFAULT_STATE
 
         # Initial state (will be overwritten)
-        ocp.constraints.x0 = fsc.quadrotor_model.DEFAULT_STATE
+        ocp.constraints.x0 = symbolic_quadrotor.DEFAULT_STATE
 
         # Set constraints
         lbu = np.asarray(lbu, dtype=np.float64)

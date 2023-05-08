@@ -17,16 +17,13 @@ from . import acados_wrapper
 
 
 def run_simulation(
-    model: fsc.quadrotor_model.QuadrotorModel,
+    sim: fsc.simulation.SimpleQuadrotorSimulator,
     solver: acados_wrapper.AcadosWrapper,
     trajectory: trajectory_generator.trajectories.Trajectory,
     reference_over_sampling: int,
     profile_data=False,
 ):
-    simulation_dt = 5e-4
     # Set quad initial state equal to the initial reference trajectory state
-    quad_current_state = trajectory.states[:, 0]
-    model.state = quad_current_state
 
     u_setpoint = trajectory.inputs[:, 0]
 
@@ -42,10 +39,7 @@ def run_simulation(
     if profile_data:
         yout["solve_time"] = [0.0]
     for current_idx in tqdm.tqdm(range(len(trajectory))):
-
-        quad_current_state = model.state
-
-        yout["states"].append(np.array(quad_current_state))
+        yout["states"].append(np.array(sim.state))
 
         # ##### Optimization runtime (outer loop) ##### #
         # Get the chunk of trajectory required for the current optimization
@@ -65,7 +59,7 @@ def run_simulation(
 
         # Optimize control input to reach pre-set target
         t1 = time.time()
-        u_optimized, _ = solver.optimize(quad_current_state)
+        u_optimized, _ = solver.optimize(sim.state)
         if profile_data:
             yout["solve_time"].append(time.time() - t1)
         tout.append(t1)
@@ -78,9 +72,10 @@ def run_simulation(
         # ##### Simulation runtime (inner loop) ##### #
         control_period = trajectory.time_interval[min(current_idx, len(trajectory) - 2)]
         while simulation_time < control_period:
-            simulation_time += simulation_dt
-            total_sim_time += simulation_dt
-            model.model_update(u_setpoint, simulation_dt)
+            simulation_time += sim.dt
+            total_sim_time += sim.dt
+            sim.input = u_setpoint
+            sim.simulation_update()
 
     tout = np.asarray(tout)
     yout = {k: np.column_stack(v) for k, v in yout.items()}
