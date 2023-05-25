@@ -230,6 +230,8 @@ class AcadosMPC {
    */
   InputType optimize(InRef<StateType> state);
 
+  int num_mpc_nodes() const;
+
  private:
   using Capsule =
       details::Handle<acadospp::SolverCapsule, acadospp::FreeCapsule>;
@@ -243,6 +245,8 @@ class AcadosMPC {
   void setTerminalState(InRef<StateType> state);
 
   void setInput(int i, InRef<InputType> input);
+
+  int num_mpc_nodes_{kSamples};
 
   Capsule capsule_;
 

@@ -61,8 +61,10 @@ AcadosMPC::AcadosMPC() : capsule_(acadospp::CreateCapsule()) {
 
 AcadosMPC::AcadosMPC(InRef<Eigen::VectorXd> time_steps)
     : capsule_(acadospp::CreateCapsule()) {
+  using details::MutData;
   ACADOS_CHECK(acadospp::CreateSolverWithDiscretization(
-      capsule(), time_steps.size(), details::MutData(time_steps)));
+      capsule(), time_steps.size(), MutData(time_steps)));
+  num_mpc_nodes_ = time_steps.size();
   init();
 }
 
@@ -210,5 +212,7 @@ void AcadosMPC::setInput(int i, InRef<InputType> input) {
   using details::MutData;
   ocp_nlp_out_set(config_, dims_, out_, i, "u", MutData(input));
 }
+
+int AcadosMPC::num_mpc_nodes() const { return num_mpc_nodes_; }
 
 }  // namespace control

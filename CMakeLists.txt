@@ -1,8 +1,6 @@
 project(quadrotor_mpcpp)
 cmake_minimum_required(VERSION 3.14.0)
 
-option(BUILD_EXAMPLES "Build Examples" ON)
-
 find_package(acados REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Python COMPONENTS Interpreter)
@@ -52,8 +50,4 @@ add_library(quadrotor_mpc::quadrotor_mpc ALIAS quadrotor_mpc_quadrotor_mpc)
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)
-endif()
-
-if(BUILD_EXAMPLES)
-  add_subdirectory(examples)
 endif()
