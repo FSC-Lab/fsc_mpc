@@ -43,7 +43,7 @@ std::unordered_map<std::string, Eigen::MatrixXd> ReadMatrixFromJson(
 
 class TestAcadosMPC : public ::testing::Test {
  public:
-  using MdlType = fsc::SimpleQuadrotor<double>;
+  using MdlType = fsc::SimpleQuadrotor<double, fsc::frames::RoboticsConvention>;
   using SimType = fsc::DynamicSystemSimulator<MdlType, fsc::ODE4>;
   TestAcadosMPC() = default;
 

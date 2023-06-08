@@ -157,8 +157,7 @@ void AcadosMPC::setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
     ref << state_ref.col(i_state), input_ref.col(i_input);
     setReference(i, ref);
   }
-  setTerminalReference(
-      state_ref.col(std::min(n_x_samples - 1, static_cast<int>(kSamples))));
+  setTerminalReference(state_ref.col(std::min<int>(n_x_samples - 1, kSamples)));
 }
 
 void AcadosMPC::setParameters(int i, InRef<ParamType> params) {

@@ -22,6 +22,7 @@ def run_simulation(
     trajectory: trajectory_generator.trajectories.Trajectory,
     reference_over_sampling: int,
     profile_data=False,
+    show_progress=True,
 ):
     # Set quad initial state equal to the initial reference trajectory state
 
@@ -38,7 +39,9 @@ def run_simulation(
     yout = {"states": [], "inputs": []}
     if profile_data:
         yout["solve_time"] = [0.0]
-    for current_idx in tqdm.tqdm(range(len(trajectory))):
+    for current_idx in (
+        tqdm.trange(len(trajectory)) if show_progress else range(len(trajectory))
+    ):
         yout["states"].append(np.array(sim.state))
 
         # ##### Optimization runtime (outer loop) ##### #

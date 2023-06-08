@@ -4,13 +4,11 @@
 # https://opensource.org/licenses/MIT
 
 import json
-import sys
+from argparse import ArgumentParser
 from pathlib import Path
 
 import fscore.simulation as sim
 import numpy as np
-
-sys.path.append("../src")
 
 from quadrotor_mpc import acados_wrapper, trajectory_generator
 
@@ -31,11 +29,23 @@ def array2json(arr):
     return {"size": arr.shape, "values": np.ravel(arr, order="F").tolist()}
 
 
+def parse_cli():
+    parser = ArgumentParser()
+    parser.add_argument(
+        "test_data_file", type=str, help="Name of data file to generate"
+    )
+    parser.add_argument(
+        "codegen_dir",
+        type=str,
+        help="Directory of generated C++ code and acados_ocp_nlp.json",
+    )
+    return parser.parse_args()
+
+
 def main():
-    # Recover some necessary variables from the MPC object
+    args = parse_cli()
 
     params = {
-        "body_frame_coordinates": True,
         "quadrotor_mass": QUADROTOR_MASS,
         "t_horizon": T_HORIZON,
         "n_mpc_modes": N_MPC_NODES,
@@ -51,9 +61,7 @@ def main():
         z=1,
         lin_acc=ACCELERATION,
         v_max=MAX_SPEED,
-        trajectory_kw={
-            k: params[k] for k in ["quadrotor_mass", "body_frame_coordinates"]
-        },
+        vehicle_mass=params["quadrotor_mass"],
     )
 
     save_data["trajectory"] = {
@@ -73,24 +81,20 @@ def main():
         quaternion_normalization_gain=1.0,
     )
 
-    codegen_dir = Path(__file__).parent / "../lib/quadrotor_mpcpp"
     # Initialize quad MPC
-    solver = acados_wrapper.AcadosWrapper.restore_from_file(str(codegen_dir))
+    solver = acados_wrapper.AcadosWrapper.restore_from_file(args.codegen_dir)
 
-    solver.set_constant_parameter([1.0])
+    solver.set_constant_parameter([params["quadrotor_mass"]])
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
     tout, yout = acados_wrapper.utils.run_simulation(
-        model,
-        solver,
-        trajectory,
-        REFERENCE_OVER_SAMPLING,
+        model, solver, trajectory, REFERENCE_OVER_SAMPLING, show_progress=False
     )
 
     save_data["sim_out"] = {"time": array2json(tout)}
     save_data["sim_out"].update({k: array2json(v) for k, v in yout.items()})
 
-    with open(Path(__file__).parent / "test_data.json", "w", encoding="utf-8") as fp:
+    with open(args.test_data_file, "w", encoding="utf-8") as fp:
         json.dump(save_data, fp)
 
 

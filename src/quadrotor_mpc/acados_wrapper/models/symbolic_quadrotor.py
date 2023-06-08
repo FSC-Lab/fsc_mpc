@@ -109,14 +109,12 @@ class SymbolicQuadrotor:
         f = u[0]  # Thrust force
         w = u[1:4]  # angular velocity
 
-        augmented_w = cs.vertcat(-w / 2, 0)  # Minus half angular velocity as quaternion
-        a_thrust = cs.vertcat(0.0, 0.0, f / self._mass)  # Thrust vector in body frame
+        augmented_w = cs.vertcat(w / 2, 0)
+        a_thrust = cs.vertcat(0.0, 0.0, f / self._mass)
 
         # Return the core equations of motion
         return cs.vertcat(
-            quaternion_rotate_point(quaternion_conjugate(q), v_b),
-            quaternion_product(augmented_w, q),
-            -cs.cross(w, v_b, 1)
-            + a_thrust
-            + quaternion_rotate_point(q, self.SYM_GRAV_VECTOR),
+            v_b,
+            quaternion_product(q, augmented_w),
+            quaternion_rotate_point(q, a_thrust) + self.SYM_GRAV_VECTOR,
         )

@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import dataclasses
+from typing import Union
 
 import numpy as np
 from fscore.rotation import Quaternion
@@ -79,19 +80,16 @@ class Trajectory:
 
 
 def undo_quaternion_flip(q_past, q_current):
-    if np.sqrt(np.sum((q_past - q_current) ** 2)) > np.sqrt(
-        np.sum((q_past + q_current) ** 2)
-    ):
+    if np.linalg.norm(q_past - q_current) > np.linalg.norm(q_past + q_current):
         return -q_current
     return q_current
 
 
 def minimum_snap_trajectory_generator(
-    traj_derivatives: ArrayLike,
-    yaw_derivatives: ArrayLike,
     t_ref: ArrayLike,
-    quadrotor_mass: float = 1.0,
-    body_frame_coordinates: bool = True,
+    traj_derivatives: ArrayLike,
+    yaw_derivatives: Union[ArrayLike, None] = None,
+    vehicle_mass: float = 1.0,
 ):
     """
     Follows the Minimum Snap Trajectory paper to generate a full trajectory given the position reference and its
@@ -107,9 +105,9 @@ def minimum_snap_trajectory_generator(
     row is the yaw trajectory, and the second row is the yaw time-derivative trajectory.
     :param t_ref: vector of length N, containing the reference times (starting from 0)
     for the trajectory.
-    :param quad: Quadrotor3D object, corresponding to the quadrotor model that will
+    :param quad: vehicle3D object, corresponding to the vehicle model that will
     track the generated reference.
-    :type quad: Quadrotor3D
+    :type quad: vehicle3D
     :param map_limits: dictionary of map limits if available, None otherwise.
     :param plot: True if show a plot of the generated trajectory.
     :return: tuple of 3 arrays:
@@ -118,28 +116,44 @@ def minimum_snap_trajectory_generator(
         attitude_quaternion_wxyz, velocity_xyz, body_rate_xyz.
         - N array of reference timestamps. The same as in the input
         - Nx4 array of reference controls, corresponding to the four motors of the
-        quadrotor.
+        vehicle.
     """
 
-    traj_derivatives = np.asarray(traj_derivatives, dtype=np.float64)
-    yaw_derivatives = np.asarray(yaw_derivatives, dtype=np.float64)
-    t_ref = np.asarray(t_ref)
+    unit_z = np.array([[0], [0], [1]], dtype=np.float64)
+    gravity = 9.81
 
-    discretization_dt = t_ref[1] - t_ref[0]
-    len_traj = traj_derivatives.shape[2]
+    traj_derivatives = np.asarray(traj_derivatives, dtype=np.float64)
+
+    n_refs, n_x, len_traj = traj_derivatives.shape
+    if n_refs not in (3, 4):
+        raise ValueError(
+            "Expected 3 or 4 (position, velocity, acceleration[, jerk]) references"
+        )
+
+    if n_x != 3:
+        raise ValueError("Trajectory must be 3-dimensional")
+
+    t_ref = np.asarray(t_ref, dtype=np.float64)
+    if t_ref.size != len_traj:
+        raise ValueError("Mismatch between trajectory length and time references")
+
+    full_pos, full_vel, full_acc, *full_jerk = map(
+        np.squeeze, np.split(traj_derivatives, n_refs, axis=0)
+    )
+
+    discretization_dt = np.gradient(t_ref)
 
     # Add gravity to accelerations
-    gravity = 9.81
-    thrust = traj_derivatives[2, :, :] + np.array([[0], [0], [1]]) * gravity
+    full_acc += unit_z * gravity
     # Compute body axes
-    z_b = thrust / np.linalg.norm(thrust, axis=0, keepdims=True)
-
-    yawing = np.any(yaw_derivatives[0, :] != 0)
+    z_b = full_acc / np.linalg.norm(full_acc, axis=0, keepdims=True)
 
     rate = np.zeros((3, len_traj))
-    f_t = quadrotor_mass * np.sum(z_b * thrust, axis=0)
+    f_t = vehicle_mass * np.sum(z_b * full_acc, axis=0)
 
-    if yawing:
+    if yaw_derivatives is not None and n_refs == 4:
+        (full_jerk,) = full_jerk
+        yaw_derivatives = np.asarray(yaw_derivatives, dtype=np.float64)
         # yaw is defined as the projection of the body-x axis on the horizontal plane
         x_c = np.row_stack(
             (
@@ -157,29 +171,26 @@ def minimum_snap_trajectory_generator(
         q = []
         for i in range(len_traj):
             # Transform to quaternion
-            q.append(Quaternion(b_r_w[:, :, i]))
+            q.append(Quaternion(b_r_w[:, :, i]).coeffs)
             if i > 1:
                 q[-1] = undo_quaternion_flip(q[-2], q[-1])
         q = np.column_stack(q)
 
         # Compute angular rate vector
-        # Total thrust acceleration must be equal to the projection of the quadrotor
+        # Total thrust acceleration must be equal to the projection of the vehicle
         # acceleration into the Z body axis
-        a_proj = np.sum(z_b * traj_derivatives[3, :, :], axis=0)
+        a_proj = np.sum(z_b * full_jerk, axis=0)
 
-        h_omega = quadrotor_mass / f_t * (traj_derivatives[3, :, :] - a_proj * z_b)
+        h_omega = vehicle_mass / f_t * (full_jerk - a_proj * z_b)
         rate[0, :] = np.sum(-h_omega * y_b, axis=0)
         rate[1, :] = np.sum(h_omega * x_b, axis=0)
-        rate[2, :] = -yaw_derivatives[1, :] * np.sum(
-            np.array([[0.0], [0.0], [1.0]]) * z_b, axis=0
-        )
+        rate[2, :] = -yaw_derivatives[1, :] * np.sum(unit_z * z_b, axis=0)
 
     else:
         # new way to compute attitude:
         # https://math.stackexchange.com/questions/2251214/calculate-quaternions-from-two-directional-vectors
-        e_z = np.array([[0.0], [0.0], [1.0]], dtype=np.float64)
-        q_w = 1.0 + np.sum(e_z * z_b, axis=0)
-        q_xyz = np.cross(e_z, z_b, axis=0)
+        q_w = 1.0 + np.sum(unit_z * z_b, axis=0)
+        q_xyz = np.cross(unit_z, z_b, axis=0)
         q = 0.5 * np.row_stack((q_xyz, q_w))
         q = q / np.linalg.norm(q, axis=0, keepdims=True)
 
@@ -192,10 +203,10 @@ def minimum_snap_trajectory_generator(
             )
         rate[:] = w_int
 
-        q_new = q
+        q_new = np.array(q)
         yaw_corr_acc = 0.0
         for i in range(1, len_traj):
-            yaw_corr = -rate[2, i] * discretization_dt
+            yaw_corr = -rate[2, i] * discretization_dt[i]
             yaw_corr_acc += yaw_corr
             q_corr = Quaternion(
                 [0.0, 0.0, np.sin(yaw_corr_acc / 2.0), np.cos(yaw_corr_acc / 2.0)]
@@ -218,19 +229,13 @@ def minimum_snap_trajectory_generator(
     # Compute inputs
     u_ref = np.row_stack((f_t, rate))
 
-    full_pos = traj_derivatives[0, :, :]
-    full_vel = traj_derivatives[1, :, :]
-    if body_frame_coordinates:
-        q[0:3, :] = -q[0:3, :]
-        for idx in range(len_traj):
-            full_vel[:, idx] = Quaternion(q[:, idx]) * full_vel[:, idx]
     traj_ref = np.row_stack((full_pos, q, full_vel))
 
     return Trajectory(traj_ref, u_ref, t_ref)
 
 
 def straight_trajectory(
-    begin, end, z, discretization_dt, lin_acc, v_max, trajectory_kw=None
+    begin, end, z, discretization_dt, lin_acc, v_max, vehicle_mass=1.0
 ):
     position_diff = end - begin
     distance = np.linalg.norm(position_diff)
@@ -270,9 +275,7 @@ def straight_trajectory(
     yaw = np.zeros((2, n))
     yaw[0, :] = np.arctan2(position_diff[1], position_diff[0])
 
-    if trajectory_kw is None:
-        trajectory_kw = {}
-    return minimum_snap_trajectory_generator(traj, yaw, t_ref, **trajectory_kw)
+    return minimum_snap_trajectory_generator(traj, yaw, t_ref, vehicle_mass)
 
 
 def loop_trajectory(
@@ -283,18 +286,18 @@ def loop_trajectory(
     lin_acc,
     clockwise=False,
     yawing=False,
-    trajectory_kw=None,
+    vehicle_mass=1.0,
 ):
     """
     Creates a circular trajectory on the x-y plane that increases speed by 1m/s at every revolution.
 
-    :param params: Quadrotor model
+    :param params: vehicle model
     :param discretization_dt: Sampling period of the trajectory.
     :param radius: radius of loop trajectory in meters
     :param z: z position of loop plane in meters
     :param lin_acc: linear acceleration of trajectory (and successive deceleration) in m/s^2
     :param clockwise: True if the rotation will be done clockwise.
-    :param yawing: True if the quadrotor yaws along the trajectory. False for 0 yaw trajectory.
+    :param yawing: True if the vehicle yaws along the trajectory. False for 0 yaw trajectory.
     :param v_max: Maximum speed at peak velocity. Revolutions needed will be calculated automatically.
     :param plot: Whether to plot an analysis of the planned trajectory or not.
     :return: The full 13-DoF trajectory with time and input vectors
@@ -440,9 +443,7 @@ def loop_trajectory(
 
     yaw = np.row_stack((yaw_traj, w_vec))
 
-    if trajectory_kw is None:
-        trajectory_kw = {}
-    return minimum_snap_trajectory_generator(traj, yaw, t_ref, **trajectory_kw)
+    return minimum_snap_trajectory_generator(t_ref, traj, yaw, vehicle_mass)
 
 
 def lemniscate_trajectory(
@@ -451,7 +452,7 @@ def lemniscate_trajectory(
     z,
     lin_acc,
     v_max,
-    trajectory_kw=None,
+    vehicle_mass=1.0,
 ):
     """
 
@@ -551,8 +552,4 @@ def lemniscate_trajectory(
         * (w_vec**2 * np.cos(4.0 * angle_vec) + alpha_vec * np.sin(4.0 * angle_vec))
     )
 
-    yaw = np.zeros_like(traj)
-
-    if trajectory_kw is None:
-        trajectory_kw = {}
-    return minimum_snap_trajectory_generator(traj, yaw, t_ref, **trajectory_kw)
+    return minimum_snap_trajectory_generator(t_ref, traj, vehicle_mass)

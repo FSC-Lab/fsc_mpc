@@ -1,5 +1,5 @@
-project(quadrotor_mpcpp)
 cmake_minimum_required(VERSION 3.14.0)
+project(quadrotor_mpcpp)
 
 find_package(acados REQUIRED)
 find_package(Eigen3 REQUIRED)

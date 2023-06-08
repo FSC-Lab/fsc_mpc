@@ -77,7 +77,6 @@ def main():
     reference_over_sampling = 5
     control_period = t_horizon / (n_mpc_nodes * reference_over_sampling)
 
-    params = {"body_frame_coordinates": True, "quadrotor_mass": QUADROTOR_MASS}
     if args.trajectory == "loop":
         trajectory = trajectory_generator.loop_trajectory(
             control_period,
@@ -87,7 +86,7 @@ def main():
             clockwise=True,
             yawing=False,
             v_max=args.max_speed,
-            trajectory_kw=params,
+            vehicle_mass=QUADROTOR_MASS,
         )
 
     elif args.trajectory == "lemniscate":
@@ -97,7 +96,7 @@ def main():
             z=1,
             lin_acc=args.acceleration,
             v_max=args.max_speed,
-            trajectory_kw=params,
+            vehicle_mass=QUADROTOR_MASS,
         )
     elif args.trajectory == "straight":
         trajectory = trajectory_generator.straight_trajectory(
@@ -107,7 +106,7 @@ def main():
             control_period,
             lin_acc=args.acceleration,
             v_max=args.max_speed,
-            trajectory_kw=params,
+            vehicle_mass=QUADROTOR_MASS,
         )
 
     else:
@@ -139,7 +138,7 @@ def main():
             codegen_dst=str(codegen_dir),
         )
 
-    solver.set_constant_parameter([1.0])
+    solver.set_constant_parameter([QUADROTOR_MASS])
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
     tout, yout = acados_wrapper.utils.run_simulation(
