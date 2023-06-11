@@ -16,15 +16,10 @@ v = x(8:10);
 f = u(1);
 w = u(2:4);
 
-qinv = QuaternionInverse(q);
 thrust = [0; 0; f / quad.mass];
 g = [0; 0; -GRAV_ACCEL];
-g_b = QuaternionRotatePoint(q, g);
 
-fcn = [p + dt .* QuaternionRotatePoint(qinv, v); ...
-    QuaternionProduct(AngleAxisToQuaternion(-dt .* w), q); ...
-    v + dt .* (-cross(w, v, 1) + g_b + thrust)];
-
-
-quad.x(:) = fcn;
+quad.x(:) = [p + dt .* v; ...
+    QuaternionProduct(q, AngleAxisToQuaternion(dt .* w)); ...
+    v + dt .* (QuaternionRotatePoint(q, thrust) + g)];
 end

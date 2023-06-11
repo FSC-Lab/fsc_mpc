@@ -1,38 +1,24 @@
-function model = MakeQuadrotorModel(model_name, varargin)
+function model = MakeQuadrotorModel(varargin)
 
 import casadi.*
 
-parser = inputParser();
+p = inputParser;
+p.addOptional('model_name', 'uav');
 
-addRequired(parser, 'model_name', @ischar);
-addOptional(parser, 'constructor', @acados_ocp_model);
+p.parse(varargin{:});
 
-parse(parser, model_name, varargin{:});
 
-p = MX.sym('p', 3, 1);
-q = MX.sym('q', 4, 1);
-v = MX.sym('v', 3, 1);
+sym_x = MX.sym('x', 10, 1);
+sym_u = MX.sym('u', 4, 1);
+sym_p = MX.sym('m');
 
-sym_x = vertcat(p, q, v);
+f_expl = QuadrotorModelDerivatives(sym_p, sym_x, sym_u);
 
-f = MX.sym('f');
-r = MX.sym('r', 3, 1);
-
-sym_u = vertcat(f, r);
-
-g = vertcat(0.0, 0.0, -9.81);
-a_thrust = vertcat(0.0, 0.0, f);
-
-f_expl = vertcat( ...
-    QuaternionRotatePoint(QuaternionInverse(q), v), ...
-    QuaternionProduct(vertcat(-r / 2, 0), q), ...
-    -cross(r, v, 1) + QuaternionRotatePoint(q, g) + a_thrust ...
-    );
-
-model = parser.Results.constructor();
+model = acados_ocp_model();
 model.set('dyn_type', 'explicit');
 model.set('dyn_expr_f', f_expl);
 model.set('sym_x', sym_x);
 model.set('sym_u', sym_u);
-model.set('name', model_name);
+model.set('sym_p', sym_p)
+model.set('name', p.Results.model_name);
 end

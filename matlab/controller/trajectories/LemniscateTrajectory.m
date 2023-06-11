@@ -7,7 +7,6 @@ arguments
     lin_acc double
     v_max double
     options.QuadMass double = 1.0
-    options.UseBodyFrameDynamics logical = true
 end
 
 % Apply map limits to radius

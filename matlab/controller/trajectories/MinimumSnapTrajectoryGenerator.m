@@ -22,7 +22,6 @@ arguments
     yaw_derivatives (2, :)double
     t_ref (1, :)double
     options.QuadMass double = 1.0;
-    options.UseBodyFrameDynamics logical = true
     options.StartAtZero logical = false
 end
 
@@ -118,12 +117,6 @@ u_ref = [f_t; rate];
 full_pos = squeeze(traj_derivatives(1, :, :));
 full_vel = squeeze(traj_derivatives(2, :, :));
 
-if options.UseBodyFrameDynamics
-    q(1:3, :) = -q(1:3, :);
-    for i = 1:len_traj
-        full_vel(:, i) = QuaternionRotatePoint(q(:, i), full_vel(:, i));
-    end
-end
 traj_ref = [full_pos; q; full_vel];
 
 % Locate starting point right at x=0 and y=0.
