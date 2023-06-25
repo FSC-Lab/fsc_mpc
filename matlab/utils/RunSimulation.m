@@ -6,7 +6,7 @@ function [tout, yout] = RunSimulation(ocp, trajectory, update_fcn, options)
 arguments
     ocp acados_ocp
     trajectory struct
-    update_fcn = @QuadrotorSO3Update
+    update_fcn = @QuadrotorRK4Update
     options.QuadMass {mustBePositive} = 1.0
     options.reference_over_sampling {mustBePositive} = 5
     options.simulation_dt double = []

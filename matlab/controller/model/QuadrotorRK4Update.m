@@ -19,13 +19,5 @@ k4 = QuadrotorModelDerivatives(quad.mass, x_aux, u);
 
 x = x + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
 
-q_sq_nrm = x(4:7).' * x(4:7);
-
-if q_sq_nrm < 1e-10
-    error("Quaternion norm is zero");
-end
-
-x(4:7) = x(4:7) ./ sqrt(q_sq_nrm);
-
 quad.x(:) = x;
 end

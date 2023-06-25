@@ -11,9 +11,7 @@ bounds = [0, 80; -8 * ones(3, 1), 8 * ones(3, 1)];
 model = MakeQuadrotorModel();
 ocp = MakeAcadosOptimizer(model, 1.0, 10, q_cost, r_cost, bounds);
 ocp.set('p', 1.0);
-quad = struct('mass', 1, ...
-    "frame", "W2B", ...
-    "x", []);
+quad = struct('mass', 1, "x", []);
 % Simulation integration step (the smaller the more "continuous"-like simulation.
 t_horizon = 1.0;
 
@@ -24,11 +22,12 @@ n_mpc_nodes = 10;
 reference_over_sampling = 5;
 control_period = t_horizon / (n_mpc_nodes * reference_over_sampling);
 
-trajectory = cell([numel(trajectory), 1]);
+trajectory = cell([2, 1]);
 
 acceleration = 1;
 max_vel = 8;
-for i = 1:numel(trajectory)
+
+for i = 1:2
     switch i
         case 1
             trajectory{i} = StraightTrajectory([0; 0; 1.0], [150; 0; 1.0], control_period, acceleration, max_vel);

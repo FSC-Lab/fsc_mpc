@@ -19,6 +19,6 @@ model.set('dyn_type', 'explicit');
 model.set('dyn_expr_f', f_expl);
 model.set('sym_x', sym_x);
 model.set('sym_u', sym_u);
-model.set('sym_p', sym_p)
+model.set('sym_p', sym_p);
 model.set('name', p.Results.model_name);
 end

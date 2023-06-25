@@ -63,14 +63,15 @@ acados_opts.set('sim_method', 'erk');
 acados_opts.set('qp_solver', 'full_condensing_hpipm');
 acados_opts.set('output_dir', build_dir);
 
-if ~clean_first
-    acados_opts.set('codegen_model', false);
-    acados_opts.set('compile_model', false);
-elseif clean_first && exist(build_dir, 'dir')
-    warning("Found build_dir: %s and option 'clean_first' is true. Cleaning!", build_dir);
-    rmdir(build_dir, 's');
+if exist(fullfile(pwd, build_dir), 'dir')
+    if ~clean_first
+        acados_opts.set('codegen_model', false);
+        acados_opts.set('compile_model', false);
+    else
+        warning("Found build_dir: %s and option 'clean_first' is true. Cleaning!", build_dir);
+        rmdir(build_dir, 's');
+    end
 end
-
 ocp = acados_ocp(acados_model, acados_opts);
 
 end
