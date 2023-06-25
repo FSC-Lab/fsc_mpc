@@ -27,7 +27,8 @@ add_dependencies(test_quadrotor_mpc generate_test_data)
 target_compile_definitions(test_quadrotor_mpc
                            PRIVATE TEST_DATA_FILE="${TEST_DATA_FILE}")
 target_compile_features(test_quadrotor_mpc PRIVATE cxx_std_17)
-target_link_libraries(test_quadrotor_mpc PRIVATE quadrotor_mpc::quadrotor_mpc
-                                                 GTest::GTest fscore::fscore)
+target_link_libraries(
+  test_quadrotor_mpc PRIVATE quadrotor_mpc::quadrotor_mpc GTest::gtest
+                             GTest::gtest_main GTest::gmock fscore::fscore)
 
 gtest_discover_tests(test_quadrotor_mpc)

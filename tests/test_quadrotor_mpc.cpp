@@ -1,12 +1,16 @@
 #include <algorithm>
+#include <chrono>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 
+#include "fscore/math/math_extras.hpp"
 #include "fscore/models/simple_quadrotor.hpp"
 #include "fscore/simulation/dynamic_system_simulator.hpp"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "quadrotor_mpcpp/quadrotor_mpc.hpp"
 
@@ -23,6 +27,49 @@
 #define TEST_DATA_FILE ""
 #error THE_TEST_DATA_FILE_MACRO_MUST_BE_DEFINED
 #endif
+
+static const Eigen::IOFormat kFmt(Eigen::StreamPrecision, 0, ",", ";\n", "", "",
+                                  "[", "]");
+
+MATCHER_P(QuaternionIsClose, expected, ::testing::PrintToString(expected)) {
+  const auto ang_dist = arg.angularDistance(expected);
+  const bool pass = fsc::IsClose(
+      ang_dist, 0.0, {std::numeric_limits<decltype(ang_dist)>::max(), 1e-3});
+  if (!pass) {
+    *result_listener << "Angular distance is " << ang_dist;
+    return false;
+  }
+  return true;
+}
+
+void Check3DTrajectories(const Eigen::MatrixXd& a_matrix,
+                         const Eigen::MatrixXd& b_matrix, double rtol,
+                         double atol) {
+  ASSERT_EQ(a_matrix.rows(), 3);
+  ASSERT_EQ(b_matrix.rows(), 3);
+  ASSERT_EQ(a_matrix.cols(), b_matrix.cols());
+  const auto len_traj = a_matrix.cols();
+
+  ASSERT_LE(std::numeric_limits<double>::epsilon(), rtol);
+  ASSERT_LT(rtol, 1.0);
+
+  for (int i = 0; i < len_traj; ++i) {
+    const Eigen::Vector3d a = a_matrix.col(i);
+    const Eigen::Vector3d b = b_matrix.col(i);
+    if (a == b) {
+      continue;
+    }
+
+    const auto diff = (a - b).norm();
+    const auto norm =
+        std::min((a.norm() + b.norm()), std::numeric_limits<double>::max());
+
+    const auto threshold = std::max(atol, rtol * norm);
+    ASSERT_LT(diff, threshold)
+        << "Trajectory point mismatch between a: " << a.transpose().format(kFmt)
+        << " and b: " << b.transpose().format(kFmt) << " on iteration " << i;
+  }
+}
 
 std::unordered_map<std::string, Eigen::MatrixXd> ReadMatrixFromJson(
     const rapidjson::Value& value) {
@@ -50,11 +97,12 @@ class TestAcadosMPC : public ::testing::Test {
   void SetUp() override;
 
   void RunSimulation();
+  static constexpr double kRelativeTolerance = 1e-4;
 
   std::unordered_map<std::string, Eigen::MatrixXd> sim_out;
   std::unordered_map<std::string, Eigen::MatrixXd> trajectory;
-  Eigen::MatrixXd result_states;
-  Eigen::MatrixXd result_inputs;
+  Eigen::MatrixXd actual_states;
+  Eigen::MatrixXd actual_inputs;
   Eigen::MatrixXd expected_states;
   Eigen::MatrixXd expected_inputs;
 
@@ -78,8 +126,8 @@ void TestAcadosMPC::SetUp() {
   ASSERT_NO_THROW(sim_out = ReadMatrixFromJson(doc["sim_out"].GetObject()));
   expected_states = sim_out["states"];
   expected_inputs = sim_out["inputs"];
-  result_inputs.resizeLike(expected_inputs);
-  result_states.resizeLike(expected_states);
+  actual_inputs.resizeLike(expected_inputs);
+  actual_states.resizeLike(expected_states);
   ASSERT_NO_THROW(trajectory =
                       ReadMatrixFromJson(doc["trajectory"].GetObject()));
 
@@ -94,7 +142,21 @@ void TestAcadosMPC::SetUp() {
                                    trajectory["inputs"].col(0));
   mpc_.setConstantParameters(control::AcadosMPC::ParamType{mass});
 
+#ifdef NDEBUG
+  // Check for simulation runtime in a release build
+  auto t1 = std::chrono::system_clock::now();
+#endif
   RunSimulation();
+#ifdef NDEBUG
+  const auto sim_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now() - t1)
+                            .count();
+  // If each iteration (solve + simulation cycle) took more than 1ms, the solver
+  // is probably unusable on real hardware
+  const auto sim_time_per_iter = sim_time / (1.0L * trajectory["time"].size());
+  EXPECT_TRUE(sim_time_per_iter < 1L)
+      << "Warning: Simulation took " << sim_time_per_iter << "ms per iteration";
+#endif
 }
 
 void TestAcadosMPC::RunSimulation() {
@@ -106,7 +168,7 @@ void TestAcadosMPC::RunSimulation() {
 
   auto n_mpc_nodes = mpc_.num_mpc_nodes();
   for (int i = 0; i < trajectory["time"].size(); ++i) {
-    result_states.col(i) = sim_->state();
+    actual_states.col(i) = sim_->state();
     auto n_state_ref =
         i + n_mpc_nodes + 1 > state_ref_sz ? state_ref_sz - i : n_mpc_nodes + 1;
     const control::AcadosMPC::StateTrajectoryType state_ref =
@@ -122,7 +184,7 @@ void TestAcadosMPC::RunSimulation() {
         mpc_.optimize(sim_->state());
     double simulation_time = 0.0;
 
-    result_inputs.col(i) = u_setpoint;
+    actual_inputs.col(i) = u_setpoint;
     while (simulation_time < control_period_) {
       simulation_time += sim_->dt();
       sim_->input() = u_setpoint;
@@ -131,9 +193,27 @@ void TestAcadosMPC::RunSimulation() {
   }
 }
 
-TEST_F(TestAcadosMPC, testOptimize) {
-  ASSERT_TRUE(result_states.isApprox(expected_states, 1e-2));
-  ASSERT_TRUE(result_inputs.isApprox(expected_inputs, 1e-2));
+TEST_F(TestAcadosMPC, testPosition) {
+  const Eigen::MatrixXd expected_position = expected_states.topRows(3);
+  const Eigen::MatrixXd actual_position = actual_states.topRows(3);
+  Check3DTrajectories(expected_position, actual_position,
+                      100 * kRelativeTolerance, 1e-4);
+}
+
+TEST_F(TestAcadosMPC, testAttitude) {
+  for (int i = 0; i < expected_states.cols(); ++i) {
+    const Eigen::Quaterniond expected_quat(
+        expected_states.template block<4, 1>(3, i));
+    const Eigen::Quaterniond actual_quat(
+        actual_states.template block<4, 1>(3, i));
+    ASSERT_THAT(expected_quat, QuaternionIsClose(actual_quat));
+  }
+}
+
+TEST_F(TestAcadosMPC, testVelocity) {
+  const Eigen::MatrixXd expected_vel = expected_states.bottomRows(3);
+  const Eigen::MatrixXd actual_vel = expected_states.bottomRows(3);
+  Check3DTrajectories(expected_vel, actual_vel, kRelativeTolerance, 1e-4);
 }
 
 int main(int argc, char** argv) {

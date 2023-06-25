@@ -1,0 +1,101 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 14,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "clang-tidy",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_CXX_CLANG_TIDY": "clang-tidy;--header-filter=^${sourceDir}/include"
+            }
+        },
+        {
+            "name": "cppcheck",
+            "hidden": true,
+            "cacheVariables": {
+                "CMAKE_CXX_CPPCHECK": "cppcheck;--inline-suppr;--suppress=*:*build/*"
+            }
+        },
+        {
+            "name": "vcpkg",
+            "hidden": true,
+            "description": "Configure with vcpkg toolchain",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": {
+                    "type": "FILEPATH",
+                    "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+                }
+            },
+            "environment": {
+                "VCPKG_ROOT": "$env{HOME}/vcpkg"
+            }
+        },
+        {
+            "name": "warn-flags",
+            "cacheVariables": {
+                "CMAKE_CXX_FLAGS": "-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wcast-qual -Wformat=2 -Wundef -Wshadow -Wcast-align -Wunused -Wnull-dereference -Wdouble-promotion -Wimplicit-fallthrough -Wextra-semi -Woverloaded-virtual -Wnon-virtual-dtor -Wold-style-cast -Wno-gnu-zero-variadic-macro-arguments"
+            }
+        },
+        {
+            "name": "sanitize-flags",
+            "binaryDir": "${sourceDir}/build/sanitize",
+            "inherits": [
+                "warn-flags"
+            ],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Sanitize",
+                "CMAKE_CXX_FLAGS_SANITIZE": "-O2 -g -fsanitize=address,undefined -fno-omit-frame-pointer -fno-common",
+                "CMAKE_MAP_IMPORTED_CONFIG_SANITIZE": "Sanitize;RelWithDebInfo;Release;Debug;"
+            }
+        },
+        {
+            "name": "lint-default",
+            "inherits": [
+                "clang-tidy",
+                "cppcheck"
+            ]
+        },
+        {
+            "name": "linux-default",
+            "inherits": [
+                "warn-flags"
+            ],
+            "displayName": "Linux X64 Default",
+            "description": "Sets Ninja Generator, X64 architecture, warning flags and build directory",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS_DEBUG": "-g",
+                "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "vcpkg-linux-default",
+            "displayName": "Linux X64 with Vcpkg",
+            "description": "Linux X64 Default preset using a Vcpkg toolchain",
+            "inherits": [
+                "linux-default",
+                "vcpkg"
+            ]
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "release",
+            "description": "",
+            "displayName": "",
+            "configurePreset": "vcpkg-linux-default",
+            "configuration": "Release"
+        }
+    ]
+}

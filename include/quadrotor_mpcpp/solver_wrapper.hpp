@@ -66,6 +66,6 @@ ocp_nlp_out* GetOutput(SolverCapsule* capsule);
 int Solve(SolverCapsule* capsule);
 
 void SetParameters(SolverCapsule* capsule, int stage, double* value);
-};  // namespace acadospp
+}  // namespace acadospp
 
 #endif  // QUADROTOR_MPCPP_SOLVER_WRAPPER_HPP_

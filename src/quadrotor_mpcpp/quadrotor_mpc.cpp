@@ -60,11 +60,11 @@ AcadosMPC::AcadosMPC() : capsule_(acadospp::CreateCapsule()) {
 }
 
 AcadosMPC::AcadosMPC(InRef<Eigen::VectorXd> time_steps)
-    : capsule_(acadospp::CreateCapsule()) {
+    : num_mpc_nodes_(static_cast<int>(time_steps.size())),
+      capsule_(acadospp::CreateCapsule()) {
   using details::MutData;
   ACADOS_CHECK(acadospp::CreateSolverWithDiscretization(
-      capsule(), time_steps.size(), MutData(time_steps)));
-  num_mpc_nodes_ = time_steps.size();
+      capsule(), num_mpc_nodes_, MutData(time_steps)));
   init();
 }
 
@@ -143,8 +143,8 @@ void AcadosMPC::setReferenceState(InRef<StateType> state,
 
 void AcadosMPC::setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
                                        InRef<InputTrajectoryType> input_ref) {
-  const int n_x_samples = state_ref.cols();
-  const int n_u_samples = input_ref.cols();
+  const int n_x_samples = static_cast<int>(state_ref.cols());
+  const int n_u_samples = static_cast<int>(input_ref.cols());
   if (n_x_samples != n_u_samples && n_x_samples != n_u_samples + 1) {
     throw AcadosWrapperException(
         "Number of state and input references do not match");
