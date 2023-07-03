@@ -90,7 +90,7 @@ std::unordered_map<std::string, Eigen::MatrixXd> ReadMatrixFromJson(
 
 class TestAcadosMPC : public ::testing::Test {
  public:
-  using MdlType = fsc::SimpleQuadrotor<double, fsc::frames::RoboticsConvention>;
+  using MdlType = fsc::SimpleQuadrotor<double, fsc::conventions::Robotics>;
   using SimType = fsc::DynamicSystemSimulator<MdlType, fsc::ODE4>;
   TestAcadosMPC() = default;
 
@@ -140,6 +140,11 @@ void TestAcadosMPC::SetUp() {
   sim_ = std::make_unique<SimType>(model, 5e-4, trajectory["time"].coeff(0),
                                    trajectory["states"].col(0),
                                    trajectory["inputs"].col(0));
+
+  sim_->setSimulationPostUpdateCallback([](auto&& states, auto&&, auto) {
+    ASSERT_TRUE(
+        fsc::IsClose(states.template segment<4>(3).norm(), 1.0, {1e-4, 1.0}));
+  });
   mpc_.setConstantParameters(control::AcadosMPC::ParamType{mass});
 
 #ifdef NDEBUG
