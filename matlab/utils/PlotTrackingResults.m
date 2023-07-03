@@ -1,9 +1,11 @@
 function h = PlotTrackingResults(trajectory, tout, yout)
+
+states = double(trajectory.states);
 f1 = figure();
 ax = gca;
 view(ax, 3);
 ax.NextPlot = 'add';
-plot3(trajectory.states(1, :), trajectory.states(2, :), trajectory.states(3, :), '--r', 'LineWidth', 2, 'DisplayName', 'Reference');
+plot3(states(1, :), states(2, :), states(3, :), '--r', 'LineWidth', 2, 'DisplayName', 'Reference');
 plot3(yout.x(1, :), yout.x(2, :), yout.x(3, :), 'b', 'LineWidth', 2, 'DisplayName', 'Executed');
 zlim(ax, [0.0, 2.0]);
 xlabel(ax, 'x (m)');
@@ -13,17 +15,17 @@ legend(ax);
 
 f2 = figure('Position', [10, 10, 1024, 768]);
 
-pos_err = trajectory.states(1:3, :) - yout.x(1:3, :);
+pos_err = states(1:3, :) - yout.x(1:3, :);
 
 traj_len = size(yout.x, 2);
 att_err = zeros(3, traj_len);
 for j = 1:traj_len
     att_err(:, j) = QuaternionToAngleAxis(...
-        QuaternionProduct(trajectory.states(4:7, j), ...
+        QuaternionProduct(states(4:7, j), ...
             QuaternionInverse(yout.x(4:7, j)))...
         );
 end
-vel_err = trajectory.states(8:10, :) - yout.x(8:10, :);
+vel_err = states(8:10, :) - yout.x(8:10, :);
 
 label_opts = {'Interpreter', 'latex'};
 for i = 1:3

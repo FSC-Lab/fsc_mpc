@@ -25,7 +25,7 @@ import dataclasses
 from typing import Union
 
 import numpy as np
-from fscore.rotation import Quaternion
+from scipy.spatial.transform import Rotation as R
 from numpy.typing import ArrayLike, NDArray
 
 
@@ -171,7 +171,7 @@ def minimum_snap_trajectory_generator(
         q = []
         for i in range(len_traj):
             # Transform to quaternion
-            q.append(Quaternion(b_r_w[:, :, i]).coeffs)
+            q.append(R.from_matrix(b_r_w[:, :, i]).as_quat())
             if i > 1:
                 q[-1] = undo_quaternion_flip(q[-2], q[-1])
         q = np.column_stack(q)
@@ -199,7 +199,8 @@ def minimum_snap_trajectory_generator(
         w_int = np.zeros((3, len_traj))
         for i in range(len_traj):
             w_int[:, i] = (
-                2.0 * (Quaternion(q[:, i]).inverse() * Quaternion(q_dot[:, i])).vec
+                2.0
+                * (R.from_quat(q[:, i]).inv() * R.from_quat(q_dot[:, i])).as_quat()[0:3]
             )
         rate[:] = w_int
 
@@ -208,19 +209,22 @@ def minimum_snap_trajectory_generator(
         for i in range(1, len_traj):
             yaw_corr = -rate[2, i] * discretization_dt[i]
             yaw_corr_acc += yaw_corr
-            q_corr = Quaternion(
+            q_corr = R.from_quat(
                 [0.0, 0.0, np.sin(yaw_corr_acc / 2.0), np.cos(yaw_corr_acc / 2.0)]
             )
-            q_new[:, i] = (Quaternion(q[:, i]) * q_corr).coeffs
+            q_new[:, i] = (R.from_quat(q[:, i]) * q_corr).as_quat()
             w_int[:, i] = (
-                2.0 * (Quaternion(q[:, i]).inverse() * Quaternion(q_dot[:, i])).vec
+                2.0
+                * (R.from_quat(q[:, i]).inv() * R.from_quat(q_dot[:, i])).as_quat()[0:3]
             )
 
         q_new_dot = np.gradient(q_new, axis=1) / discretization_dt
         for i in range(1, len_traj):
             w_int[:, i] = (
                 2.0
-                * (Quaternion(q_new[:, i]).inverse() * Quaternion(q_new_dot[:, i])).vec
+                * (
+                    R.from_quat(q_new[:, i]).inv() * R.from_quat(q_new_dot[:, i])
+                ).as_quat()[0:3]
             )
 
         q[:] = q_new
@@ -235,7 +239,7 @@ def minimum_snap_trajectory_generator(
 
 
 def straight_trajectory(
-    begin, end, z, discretization_dt, lin_acc, v_max, vehicle_mass=1.0
+    begin, end, discretization_dt, lin_acc, v_max, vehicle_mass=1.0
 ):
     position_diff = end - begin
     distance = np.linalg.norm(position_diff)
@@ -268,14 +272,13 @@ def straight_trajectory(
 
     n = t_ref.size
     traj = np.zeros((4, 3, n))
-    traj[0, 0:2, :] = begin[..., None] + heading_vector * d_vec
-    traj[0, 2, :] = z
-    traj[1, 0:2, :] = heading_vector * v_vec
-    traj[2, 0:2, :] = heading_vector * a_vec
+    traj[0, 0:3, :] = begin[..., None] + heading_vector * d_vec
+    traj[1, 0:3, :] = heading_vector * v_vec
+    traj[2, 0:3, :] = heading_vector * a_vec
     yaw = np.zeros((2, n))
     yaw[0, :] = np.arctan2(position_diff[1], position_diff[0])
 
-    return minimum_snap_trajectory_generator(traj, yaw, t_ref, vehicle_mass)
+    return minimum_snap_trajectory_generator(t_ref, traj, yaw, vehicle_mass)
 
 
 def loop_trajectory(

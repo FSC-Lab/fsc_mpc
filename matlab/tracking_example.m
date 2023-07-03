@@ -1,6 +1,14 @@
-addpath controller/trajectories/ controller/model/ utils/
+addpath controller/model/ utils/
 
 setup ~/src/acados;
+
+path_adjusted = false;
+if ~path_adjusted
+    py.sys.path().append("../src/quadrotor_mpc");
+    path_adjusted = true;
+end
+
+trajectory_generator = py.importlib.import_module("trajectory_generator");
 %
 warning('off', 'all');
 
@@ -30,11 +38,13 @@ max_vel = 8;
 for i = 1:2
     switch i
         case 1
-            trajectory{i} = StraightTrajectory([0; 0; 1.0], [150; 0; 1.0], control_period, acceleration, max_vel);
+            begin_pos = py.numpy.array([0.0; 0.0; 1.0]);
+            end_pos = py.numpy.array([150.0; 0.0; 1.0]);
+            trajectory{i} = trajectory_generator.straight_trajectory(begin_pos, end_pos, control_period, acceleration, max_vel);
         case 2
             radius = 5;
             altitude = 1;
-            trajectory{i} = LemniscateTrajectory(control_period, radius, altitude, acceleration, max_vel);
+            trajectory{i} = trajectory_generator.lemniscate_trajectory(control_period, radius, altitude, acceleration, max_vel, 1.0);
     end
 end
 

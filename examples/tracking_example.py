@@ -100,9 +100,8 @@ def main():
         )
     elif args.trajectory == "straight":
         trajectory = trajectory_generator.straight_trajectory(
-            np.r_[0.0, 0.0],
-            np.r_[150.0, 0.0],
-            1.0,
+            np.r_[0.0, 0.0, 1.0],
+            np.r_[150.0, 0.0, 1.0],
             control_period,
             lin_acc=args.acceleration,
             v_max=args.max_speed,
