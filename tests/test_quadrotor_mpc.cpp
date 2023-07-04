@@ -14,11 +14,20 @@
 #include "gtest/gtest.h"
 #include "quadrotor_mpcpp/quadrotor_mpc.hpp"
 
-#define RAPIDJSON_ASSERT(cond)        \
-  if (!static_cast<bool>((cond)))     \
-  throw std::runtime_error(#cond      \
-                           " is not " \
-                           "met")
+#define RAPIDJSON_NOEXCEPT_ASSERT(cond) \
+  do {                                  \
+    if (!static_cast<bool>((cond))) {   \
+      std::abort();                     \
+    }                                   \
+  } while (0)
+
+#define RAPIDJSON_ASSERT(cond)            \
+  do {                                    \
+    if (!static_cast<bool>((cond)))       \
+      throw std::runtime_error(#cond      \
+                               " is not " \
+                               "met");    \
+  } while (0)
 
 #include "rapidjson/document.h"
 #include "rapidjson/istreamwrapper.h"
@@ -146,22 +155,6 @@ void TestAcadosMPC::SetUp() {
         fsc::IsClose(states.template segment<4>(3).norm(), 1.0, {1e-4, 1.0}));
   });
   mpc_.setConstantParameters(control::AcadosMPC::ParamType{mass});
-
-#ifdef NDEBUG
-  // Check for simulation runtime in a release build
-  auto t1 = std::chrono::system_clock::now();
-#endif
-  RunSimulation();
-#ifdef NDEBUG
-  const auto sim_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::system_clock::now() - t1)
-                            .count();
-  // If each iteration (solve + simulation cycle) took more than 1ms, the solver
-  // is probably unusable on real hardware
-  const auto sim_time_per_iter = sim_time / (1.0L * trajectory["time"].size());
-  EXPECT_TRUE(sim_time_per_iter < 1L)
-      << "Warning: Simulation took " << sim_time_per_iter << "ms per iteration";
-#endif
 }
 
 void TestAcadosMPC::RunSimulation() {
@@ -172,6 +165,10 @@ void TestAcadosMPC::RunSimulation() {
   auto input_ref_sz = full_input_ref.cols();
 
   auto n_mpc_nodes = mpc_.num_mpc_nodes();
+#ifdef NDEBUG
+  // Check for simulation runtime in a release build
+  auto t1 = std::chrono::system_clock::now();
+#endif
   for (int i = 0; i < trajectory["time"].size(); ++i) {
     actual_states.col(i) = sim_->state();
     auto n_state_ref =
@@ -196,9 +193,20 @@ void TestAcadosMPC::RunSimulation() {
       sim_->simulationUpdate();
     }
   }
+#ifdef NDEBUG
+  const auto sim_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now() - t1)
+                            .count();
+  // If each iteration (solve + simulation cycle) took more than 1ms, the solver
+  // is probably unusable on real hardware
+  const auto sim_time_per_iter = sim_time / (1.0L * trajectory["time"].size());
+  EXPECT_TRUE(sim_time_per_iter < 1L)
+      << "Warning: Simulation took " << sim_time_per_iter << "ms per iteration";
+#endif
 }
 
 TEST_F(TestAcadosMPC, testPosition) {
+  RunSimulation();
   const Eigen::MatrixXd expected_position = expected_states.topRows(3);
   const Eigen::MatrixXd actual_position = actual_states.topRows(3);
   Check3DTrajectories(expected_position, actual_position,
@@ -206,6 +214,7 @@ TEST_F(TestAcadosMPC, testPosition) {
 }
 
 TEST_F(TestAcadosMPC, testAttitude) {
+  RunSimulation();
   for (int i = 0; i < expected_states.cols(); ++i) {
     const Eigen::Quaterniond expected_quat(
         expected_states.template block<4, 1>(3, i));
@@ -216,6 +225,7 @@ TEST_F(TestAcadosMPC, testAttitude) {
 }
 
 TEST_F(TestAcadosMPC, testVelocity) {
+  RunSimulation();
   const Eigen::MatrixXd expected_vel = expected_states.bottomRows(3);
   const Eigen::MatrixXd actual_vel = expected_states.bottomRows(3);
   Check3DTrajectories(expected_vel, actual_vel, kRelativeTolerance, 1e-4);
