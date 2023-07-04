@@ -115,8 +115,9 @@ class TestAcadosMPC : public ::testing::Test {
   Eigen::MatrixXd expected_states;
   Eigen::MatrixXd expected_inputs;
 
+  control::AcadosMPC mpc;
+
  private:
-  control::AcadosMPC mpc_;
   std::unique_ptr<SimType> sim_;
   double control_period_{-1};
   double sim_period_{-1};
@@ -154,7 +155,7 @@ void TestAcadosMPC::SetUp() {
     ASSERT_TRUE(
         fsc::IsClose(states.template segment<4>(3).norm(), 1.0, {1e-4, 1.0}));
   });
-  mpc_.setConstantParameters(control::AcadosMPC::ParamType{mass});
+  mpc.setConstantParameters(control::AcadosMPC::ParamType{mass});
 }
 
 void TestAcadosMPC::RunSimulation() {
@@ -164,7 +165,7 @@ void TestAcadosMPC::RunSimulation() {
   const auto& full_input_ref = trajectory["inputs"];
   auto input_ref_sz = full_input_ref.cols();
 
-  auto n_mpc_nodes = mpc_.num_mpc_nodes();
+  auto n_mpc_nodes = mpc.num_mpc_nodes();
 #ifdef NDEBUG
   // Check for simulation runtime in a release build
   auto t1 = std::chrono::system_clock::now();
@@ -181,9 +182,9 @@ void TestAcadosMPC::RunSimulation() {
     const control::AcadosMPC::InputTrajectoryType input_ref =
         full_input_ref.middleCols(i, n_input_ref);
 
-    mpc_.setReferenceTrajectory(state_ref, input_ref);
+    mpc.setReferenceTrajectory(state_ref, input_ref);
     const control::AcadosMPC::InputType u_setpoint =
-        mpc_.optimize(sim_->state());
+        mpc.optimize(sim_->state());
     double simulation_time = 0.0;
 
     actual_inputs.col(i) = u_setpoint;
@@ -203,6 +204,17 @@ void TestAcadosMPC::RunSimulation() {
   EXPECT_TRUE(sim_time_per_iter < 1L)
       << "Warning: Simulation took " << sim_time_per_iter << "ms per iteration";
 #endif
+}
+
+TEST_F(TestAcadosMPC, testBounding) {
+  const double neg_bound = -10.0;
+  const double pos_bound = 10.0;
+  mpc.setBounds(control::AcadosMPC::BoundsType::Constant(neg_bound),
+                control::AcadosMPC::BoundsType::Constant(pos_bound));
+  RunSimulation();
+  ASSERT_TRUE((actual_inputs.array() > (1.0 + 1e-5) * neg_bound).all())
+      << actual_inputs.minCoeff();
+  ASSERT_TRUE((actual_inputs.array() < (1.0 + 1e-5) * pos_bound).all());
 }
 
 TEST_F(TestAcadosMPC, testPosition) {

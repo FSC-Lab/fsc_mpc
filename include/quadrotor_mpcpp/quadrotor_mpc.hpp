@@ -83,15 +83,18 @@ class AcadosMPC {
 
   static constexpr double kGravAccel{9.81};
 
-  static const StateCostType kDefaultStateCost;
-  static const InputCostType kDefaultInputCost;
-  static const RefType kDefaultRef;
-  static const StateType kDefaultState;
-  static const InputType kDefaultInput;
+  static const BoundsType kNoBounds;
 
   AcadosMPC();
 
   explicit AcadosMPC(InRef<Eigen::VectorXd> time_steps);
+
+  // Move ctors must be explicitly defaulted since we have a custom dtor
+  // Move ops can be properly generated since we store the solver capsule in a
+  // unique_ptr.
+  AcadosMPC(AcadosMPC &&other) = default;
+
+  AcadosMPC &operator=(AcadosMPC &&other) = default;
 
   ~AcadosMPC();
 
@@ -183,8 +186,7 @@ class AcadosMPC {
    * @param state The state setpoint
    * @param input The input setpoint
    */
-  void setReferenceState(InRef<StateType> state,
-                         InRef<InputType> input = kDefaultInput);
+  void setReferenceState(InRef<StateType> state, InRef<InputType> input);
 
   /**
    * @brief Set the state and input reference over all shooting nodes to a
@@ -250,13 +252,11 @@ class AcadosMPC {
 
   Capsule capsule_;
 
-  StateType initial_state_{kDefaultState};
-
-  ocp_nlp_config *config_;
-  ocp_nlp_dims *dims_;
-  ocp_nlp_in *in_;
-  ocp_nlp_out *out_;
-  ocp_nlp_solver *solver_;
+  ocp_nlp_config *config_{nullptr};
+  ocp_nlp_dims *dims_{nullptr};
+  ocp_nlp_in *in_{nullptr};
+  ocp_nlp_out *out_{nullptr};
+  ocp_nlp_solver *solver_{nullptr};
 };
 
 }  // namespace control

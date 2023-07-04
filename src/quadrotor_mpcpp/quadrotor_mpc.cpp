@@ -5,6 +5,8 @@
 
 #include "quadrotor_mpcpp/quadrotor_mpc.hpp"
 
+#include <limits>
+
 #include "quadrotor_mpcpp/internal.hpp"
 
 extern "C" {
@@ -22,37 +24,8 @@ namespace control {
 
 constexpr double AcadosMPC::kGravAccel;
 
-// TODO(Hs293Go): Fix the default definitions, which tightly couples this
-// interface to the quadrotor model
-const AcadosMPC::StateType AcadosMPC::kDefaultState =
-    (AcadosMPC::StateType() << Eigen::Vector3d::Zero(),  // Position
-     Eigen::Quaterniond::Identity().coeffs(),            // Attitude
-     Eigen::Vector3d::Zero()                             // Velocity
-     )
-        .finished();
-
-const AcadosMPC::InputType AcadosMPC::kDefaultInput =
-    (AcadosMPC::InputType() << AcadosMPC::kGravAccel,  // Thrust
-     Eigen::Vector3d::Zero()                           // Angular Velocity
-     )
-        .finished();
-
-const AcadosMPC::RefType AcadosMPC::kDefaultRef =
-    (AcadosMPC::RefType() << kDefaultState, kDefaultInput).finished();
-
-const AcadosMPC::StateCostType AcadosMPC::kDefaultStateCost =
-    (AcadosMPC::StateType() << Eigen::Vector3d::Constant(10.0),  // Position
-     Eigen::Quaterniond::Coefficients::Constant(1.0),            // Attitude
-     Eigen::Vector3d::Constant(0.1)                              // Velocity
-     )
-        .finished()
-        .asDiagonal();
-
-const AcadosMPC::InputCostType AcadosMPC::kDefaultInputCost =
-    (AcadosMPC::InputType() << 0.1,   // Thrust
-     Eigen::Vector3d::Constant(0.1))  // Angular Velocity
-        .finished()
-        .asDiagonal();
+const AcadosMPC::BoundsType AcadosMPC::kNoBounds =
+    AcadosMPC::BoundsType::Constant(1e50);
 
 AcadosMPC::AcadosMPC() : capsule_(acadospp::CreateCapsule()) {
   ACADOS_CHECK(acadospp::CreateSolver(capsule()));
@@ -178,6 +151,7 @@ AcadosMPC::InputType AcadosMPC::optimize(InRef<StateType> state) {
 
 void AcadosMPC::init() {
   using StateIdxs = Eigen::Matrix<int, kStateSize, 1>;
+  using InputIdxs = Eigen::Matrix<int, kInputSize, 1>;
 
   config_ = acadospp::GetConfig(capsule());
   dims_ = acadospp::GetDims(capsule());
@@ -190,12 +164,19 @@ void AcadosMPC::init() {
   ocp_nlp_constraints_model_set(config_, dims_, in_, 0, "idxbx",
                                 constrained_state_idx.data());
 
-  // Initialize the output struct
-  for (int i = 0; i < kSamples; ++i) {
-    setReference(i, kDefaultRef);
-    setState(i, kDefaultState);
+  InputIdxs constrained_input_idx = InputIdxs::LinSpaced(0, kInputSize - 1);
+  for (int i = 0; i < num_mpc_nodes_; ++i) {
+    ocp_nlp_constraints_model_set(config_, dims_, in_, i, "idxbu",
+                                  constrained_input_idx.data());
+    setBounds(-kNoBounds, kNoBounds);
   }
-  setTerminalState(kDefaultState);
+
+  // Initialize the output struct
+  for (int i = 0; i < num_mpc_nodes_; ++i) {
+    setReference(i, RefType::Zero());
+    setState(i, StateType::Zero());
+  }
+  setTerminalState(StateType::Zero());
 }
 
 void AcadosMPC::setState(int i, InRef<StateType> state) {
