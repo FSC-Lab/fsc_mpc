@@ -10,7 +10,7 @@ from pathlib import Path
 import fscore.simulation as sim
 import numpy as np
 
-from quadrotor_mpc import acados_wrapper, trajectory_generator
+from quadrotor_mpc import acados_wrapper, trajectory_generator, utils
 
 REFERENCE_OVER_SAMPLING = 1
 T_HORIZON = 1.0
@@ -87,7 +87,7 @@ def main():
     solver.set_constant_parameter([params["quadrotor_mass"]])
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
-    tout, yout = acados_wrapper.utils.run_simulation(
+    tout, yout = utils.run_simulation(
         model, solver, trajectory, REFERENCE_OVER_SAMPLING, show_progress=False
     )
 

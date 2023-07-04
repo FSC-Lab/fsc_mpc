@@ -9,7 +9,7 @@ from pathlib import Path
 import fscore.simulation as sim
 import numpy as np
 
-from quadrotor_mpc import acados_wrapper, trajectory_generator
+from quadrotor_mpc import acados_wrapper, trajectory_generator, utils
 
 
 def parse_cli():
@@ -84,7 +84,7 @@ def main():
             z=1,
             lin_acc=args.acceleration,
             clockwise=True,
-            yawing=False,
+            yawing=True,
             v_max=args.max_speed,
             vehicle_mass=QUADROTOR_MASS,
         )
@@ -140,7 +140,7 @@ def main():
     solver.set_constant_parameter([QUADROTOR_MASS])
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
-    tout, yout = acados_wrapper.utils.run_simulation(
+    tout, yout = utils.run_simulation(
         model, solver, trajectory, reference_over_sampling, profile_data=True
     )
     tracking_rmse = np.mean(
@@ -149,9 +149,7 @@ def main():
         )
     )
 
-    _ = acados_wrapper.utils.visualize_tracking_results(
-        tout, yout, trajectory, autoshow=True
-    )
+    _ = utils.visualize_tracking_results(tout, yout, trajectory, autoshow=True)
 
     v_max_abs = np.max(np.sqrt(np.sum(trajectory.states[:, 7:10] ** 2, 1)))
 

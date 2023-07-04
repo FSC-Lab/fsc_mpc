@@ -8,7 +8,6 @@ from os import PathLike
 from typing import Dict, Optional, Union
 
 import casadi as cs
-import fscore as fsc
 import numpy as np
 import scipy.linalg
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver

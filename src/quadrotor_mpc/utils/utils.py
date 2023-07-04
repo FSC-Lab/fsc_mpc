@@ -13,7 +13,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.transform import Rotation
 
 from .. import trajectory_generator
-from . import acados_wrapper
+from ..acados_wrapper import acados_wrapper
 
 
 def run_simulation(
