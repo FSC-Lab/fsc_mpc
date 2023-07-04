@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14.0)
-project(quadrotor_mpcpp)
+project(quadrotor_mpcpp VERSION 0.0.1)
 
 find_package(acados REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -30,24 +30,33 @@ add_custom_target(
   COMMENT "Generating Acados solver library")
 
 # Step 2: Compile the generated source AND the cpp API wrapper
-add_library(solver_wrapper ${CODEGEN_FILES}
-                           src/quadrotor_mpcpp/solver_wrapper.cpp)
-add_dependencies(solver_wrapper acados_python_codegen)
+add_library(quadrotor_mpc_solver ${CODEGEN_FILES}
+                                 src/quadrotor_mpcpp/solver_wrapper.cpp)
+add_dependencies(quadrotor_mpc_solver acados_python_codegen)
 target_compile_definitions(
-  solver_wrapper PUBLIC "MODEL_NAME_LOWER=${MODEL_NAME_LOWER}"
-                        "MODEL_NAME_UPPER=${MODEL_NAME_UPPER}")
-target_include_directories(solver_wrapper PUBLIC ${CODEGEN_DIR} include)
-target_link_libraries(solver_wrapper PUBLIC acados blasfeo hpipm)
+  quadrotor_mpc_solver PUBLIC "MODEL_NAME_LOWER=${MODEL_NAME_LOWER}"
+                              "MODEL_NAME_UPPER=${MODEL_NAME_UPPER}")
+target_include_directories(
+  quadrotor_mpc_solver
+  PUBLIC "$<BUILD_INTERFACE:${CODEGEN_DIR};${PROJECT_SOURCE_DIR}/include>")
+target_link_libraries(quadrotor_mpc_solver PUBLIC acados blasfeo hpipm)
+add_library(quadrotor_mpc::solver ALIAS quadrotor_mpc_solver)
+set_property(TARGET quadrotor_mpc_solver PROPERTY EXPORT_NAME solver)
 
 # Step 3: Compile the OOPified MPC solver
 add_library(quadrotor_mpc_quadrotor_mpc src/quadrotor_mpcpp/quadrotor_mpc.cpp)
-target_include_directories(quadrotor_mpc_quadrotor_mpc PUBLIC include)
-target_link_libraries(quadrotor_mpc_quadrotor_mpc PUBLIC Eigen3::Eigen
-                                                         solver_wrapper)
-
+target_include_directories(
+  quadrotor_mpc_quadrotor_mpc
+  PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>")
+target_link_libraries(quadrotor_mpc_quadrotor_mpc PUBLIC quadrotor_mpc::solver
+                                                         Eigen3::Eigen)
+set_property(TARGET quadrotor_mpc_quadrotor_mpc PROPERTY EXPORT_NAME
+                                                         quadrotor_mpc)
 add_library(quadrotor_mpc::quadrotor_mpc ALIAS quadrotor_mpc_quadrotor_mpc)
 
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()
+
+include(cmake/install-rules.cmake)
