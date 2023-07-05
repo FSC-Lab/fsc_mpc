@@ -246,8 +246,6 @@ class AcadosMPC {
 
   void setInput(int i, InRef<InputType> input);
 
-  int num_mpc_nodes_{kSamples};
-
   Capsule capsule_;
 
   ocp_nlp_config *config_{nullptr};

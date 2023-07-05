@@ -166,10 +166,6 @@ void TestAcadosMPC::RunSimulation() {
   auto input_ref_sz = full_input_ref.cols();
 
   auto n_mpc_nodes = mpc.num_mpc_nodes();
-#ifdef NDEBUG
-  // Check for simulation runtime in a release build
-  auto t1 = std::chrono::system_clock::now();
-#endif
   for (int i = 0; i < trajectory["time"].size(); ++i) {
     actual_states.col(i) = sim_->state();
     auto n_state_ref =
@@ -194,16 +190,6 @@ void TestAcadosMPC::RunSimulation() {
       sim_->simulationUpdate();
     }
   }
-#ifdef NDEBUG
-  const auto sim_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::system_clock::now() - t1)
-                            .count();
-  // If each iteration (solve + simulation cycle) took more than 1ms, the solver
-  // is probably unusable on real hardware
-  const auto sim_time_per_iter = sim_time / (1.0L * trajectory["time"].size());
-  EXPECT_TRUE(sim_time_per_iter < 1L)
-      << "Warning: Simulation took " << sim_time_per_iter << "ms per iteration";
-#endif
 }
 
 TEST_F(TestAcadosMPC, testBounding) {

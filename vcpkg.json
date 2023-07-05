@@ -3,6 +3,8 @@
     "name": "main",
     "version": "0.0.1",
     "dependencies": [
+        "benchmark",
+        "openblas",
         "gtest",
         "eigen3",
         "rapidjson"

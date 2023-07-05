@@ -33,11 +33,10 @@ AcadosMPC::AcadosMPC() : capsule_(acadospp::CreateCapsule()) {
 }
 
 AcadosMPC::AcadosMPC(InRef<Eigen::VectorXd> time_steps)
-    : num_mpc_nodes_(static_cast<int>(time_steps.size())),
-      capsule_(acadospp::CreateCapsule()) {
+    : capsule_(acadospp::CreateCapsule()) {
   using details::MutData;
   ACADOS_CHECK(acadospp::CreateSolverWithDiscretization(
-      capsule(), num_mpc_nodes_, MutData(time_steps)));
+      capsule(), static_cast<int>(time_steps.size()), MutData(time_steps)));
   init();
 }
 
@@ -46,7 +45,6 @@ AcadosMPC::AcadosMPC(AcadosMPC&& other) noexcept { *this = std::move(other); }
 AcadosMPC& AcadosMPC::operator=(AcadosMPC&& other) noexcept {
   using std::swap;
   if (this != &other) {
-    swap(other.num_mpc_nodes_, num_mpc_nodes_);
     swap(other.capsule_, capsule_);
     swap(other.config_, config_);
     swap(other.dims_, dims_);
@@ -74,7 +72,7 @@ void AcadosMPC::setReference(int i, InRef<RefType> ref) {
 
 void AcadosMPC::setTerminalReference(InRef<EndRefType> terminal_ref) {
   using details::MutData;
-  ocp_nlp_cost_model_set(config_, dims_, in_, kSamples, "y_ref",
+  ocp_nlp_cost_model_set(config_, dims_, in_, num_mpc_nodes(), "y_ref",
                          MutData(terminal_ref));
 }
 
@@ -103,7 +101,7 @@ void AcadosMPC::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
         "in upper bound");
   }
 
-  for (int i = 0; i < kSamples; ++i) {
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
     ocp_nlp_constraints_model_set(config_, dims_, in_, i, "lbu", MutData(lbu));
     ocp_nlp_constraints_model_set(config_, dims_, in_, i, "ubu", MutData(ubu));
   }
@@ -124,7 +122,7 @@ AcadosMPC::InputType AcadosMPC::getInput(int i) const {
 void AcadosMPC::setReferenceState(InRef<StateType> state,
                                   InRef<InputType> input) {
   const RefType ref = (RefType() << state, input).finished();
-  for (int i = 0; i < kSamples; ++i) {
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
     setReference(i, ref);
   }
   setTerminalReference(state);
@@ -140,7 +138,7 @@ void AcadosMPC::setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
   }
 
   RefType ref;
-  for (int i = 0; i < kSamples; ++i) {
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
     const int i_state = std::min(n_x_samples - 1, i);
     const int i_input = std::min(n_u_samples - 1, i);
     ref << state_ref.col(i_state), input_ref.col(i_input);
@@ -181,14 +179,14 @@ void AcadosMPC::init() {
                                 constrained_state_idx.data());
 
   InputIdxs constrained_input_idx = InputIdxs::LinSpaced(0, kInputSize - 1);
-  for (int i = 0; i < num_mpc_nodes_; ++i) {
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
     ocp_nlp_constraints_model_set(config_, dims_, in_, i, "idxbu",
                                   constrained_input_idx.data());
     setBounds(-kNoBounds, kNoBounds);
   }
 
   // Initialize the output struct
-  for (int i = 0; i < num_mpc_nodes_; ++i) {
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
     setReference(i, RefType::Zero());
     setState(i, StateType::Zero());
   }
@@ -209,6 +207,6 @@ void AcadosMPC::setInput(int i, InRef<InputType> input) {
   ocp_nlp_out_set(config_, dims_, out_, i, "u", MutData(input));
 }
 
-int AcadosMPC::num_mpc_nodes() const { return num_mpc_nodes_; }
+int AcadosMPC::num_mpc_nodes() const { return dims_->N; }
 
 }  // namespace control

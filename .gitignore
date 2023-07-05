@@ -1,7 +1,10 @@
+CMakeUserPresets.json
+
 *_ocp_nlp.json
 *build*/
 c_generated_code/
 data/*.npz
+*data.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
