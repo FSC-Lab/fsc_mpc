@@ -90,11 +90,9 @@ class AcadosMPC {
   explicit AcadosMPC(InRef<Eigen::VectorXd> time_steps);
 
   // Move ctors must be explicitly defaulted since we have a custom dtor
-  // Move ops can be properly generated since we store the solver capsule in a
-  // unique_ptr.
-  AcadosMPC(AcadosMPC &&other) = default;
+  AcadosMPC(AcadosMPC &&other) noexcept;
 
-  AcadosMPC &operator=(AcadosMPC &&other) = default;
+  AcadosMPC &operator=(AcadosMPC &&other) noexcept;
 
   ~AcadosMPC();
 

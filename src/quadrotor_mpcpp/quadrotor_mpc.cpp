@@ -41,6 +41,22 @@ AcadosMPC::AcadosMPC(InRef<Eigen::VectorXd> time_steps)
   init();
 }
 
+AcadosMPC::AcadosMPC(AcadosMPC&& other) noexcept { *this = std::move(other); }
+
+AcadosMPC& AcadosMPC::operator=(AcadosMPC&& other) noexcept {
+  using std::swap;
+  if (this != &other) {
+    swap(other.num_mpc_nodes_, num_mpc_nodes_);
+    swap(other.capsule_, capsule_);
+    swap(other.config_, config_);
+    swap(other.dims_, dims_);
+    swap(other.in_, in_);
+    swap(other.out_, out_);
+    swap(other.solver_, solver_);
+  }
+  return *this;
+}
+
 AcadosMPC::~AcadosMPC() { acadospp::FreeSolver(capsule()); }
 
 void AcadosMPC::setInitialState(InRef<StateType> initial_state) {

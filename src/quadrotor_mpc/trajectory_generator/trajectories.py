@@ -27,6 +27,7 @@ from typing import Union
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from numpy.typing import ArrayLike, NDArray
+from scipy.integrate import cumtrapz
 
 
 @dataclasses.dataclass
@@ -195,30 +196,23 @@ def minimum_snap_trajectory_generator(
         q = q / np.linalg.norm(q, axis=0, keepdims=True)
 
         # Use numerical differentiation of quaternions
-        q_dot = np.gradient(q, axis=1) / discretization_dt
+        q_dot = np.gradient(q, t_ref, axis=1)
         w_int = np.zeros((3, len_traj))
         for i in range(len_traj):
-            w_int[:, i] = (
-                2.0
-                * (R.from_quat(q[:, i]).inv() * R.from_quat(q_dot[:, i])).as_quat()[0:3]
-            )
+            q_i = R.from_quat(q[:, i])
+            w_int[:, i] = 2.0 * (q_i.inv() * R.from_quat(q_dot[:, i])).as_quat()[0:3]
         rate[:] = w_int
 
         q_new = np.array(q)
-        yaw_corr_acc = 0.0
+        yaw_corr_acc = cumtrapz(-rate[2, :], discretization_dt, initial=0.0)
         for i in range(1, len_traj):
-            yaw_corr = -rate[2, i] * discretization_dt[i]
-            yaw_corr_acc += yaw_corr
             q_corr = R.from_quat(
-                [0.0, 0.0, np.sin(yaw_corr_acc / 2.0), np.cos(yaw_corr_acc / 2.0)]
+                [0.0, 0.0, np.sin(yaw_corr_acc[i] / 2.0), np.cos(yaw_corr_acc[i] / 2.0)]
             )
-            q_new[:, i] = (R.from_quat(q[:, i]) * q_corr).as_quat()
-            w_int[:, i] = (
-                2.0
-                * (R.from_quat(q[:, i]).inv() * R.from_quat(q_dot[:, i])).as_quat()[0:3]
-            )
+            q_i = R.from_quat(q[:, i])
+            q_new[:, i] = (q_i * q_corr).as_quat()
 
-        q_new_dot = np.gradient(q_new, axis=1) / discretization_dt
+        q_new_dot = np.gradient(q_new, t_ref, axis=1)
         for i in range(1, len_traj):
             w_int[:, i] = (
                 2.0
