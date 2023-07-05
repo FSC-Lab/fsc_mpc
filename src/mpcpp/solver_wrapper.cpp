@@ -1,4 +1,4 @@
-#include "quadrotor_mpcpp/solver_wrapper.hpp"
+#include "mpcpp/solver_wrapper.hpp"
 
 namespace acadospp {
 SolverCapsule* CreateCapsule() { return ACADOS_OBJ(acados_create_capsule)(); }

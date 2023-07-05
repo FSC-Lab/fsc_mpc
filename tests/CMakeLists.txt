@@ -22,13 +22,13 @@ add_custom_target(
   DEPENDS ${TEST_DATA_FILE}
   COMMENT "Generating test data")
 
-add_executable(test_quadrotor_mpc test_quadrotor_mpc.cpp)
-add_dependencies(test_quadrotor_mpc generate_test_data)
-target_compile_definitions(test_quadrotor_mpc
+add_executable(test_mpcpp test_mpcpp.cpp)
+add_dependencies(test_mpcpp generate_test_data)
+target_compile_definitions(test_mpcpp
                            PRIVATE TEST_DATA_FILE="${TEST_DATA_FILE}")
-target_compile_features(test_quadrotor_mpc PRIVATE cxx_std_17)
+target_compile_features(test_mpcpp PRIVATE cxx_std_17)
 target_link_libraries(
-  test_quadrotor_mpc PRIVATE quadrotor_mpc::quadrotor_mpc GTest::gtest
-                             GTest::gtest_main GTest::gmock fscore::fscore)
+  test_mpcpp PRIVATE mpcpp::acados_mpc GTest::gtest GTest::gtest_main
+                     GTest::gmock fscore::fscore)
 
-gtest_discover_tests(test_quadrotor_mpc)
+gtest_discover_tests(test_mpcpp)

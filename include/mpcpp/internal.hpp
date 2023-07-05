@@ -1,5 +1,5 @@
-#ifndef QUADROTOR_MPCPP_INTERNAL_HPP_
-#define QUADROTOR_MPCPP_INTERNAL_HPP_
+#ifndef MPCPP_INTERNAL_HPP_
+#define MPCPP_INTERNAL_HPP_
 
 #include <memory>
 #include <type_traits>
@@ -36,4 +36,4 @@ using Handle = std::unique_ptr<T, DeleterWrapper<T, D>>;
 }  // namespace details
 }  // namespace control
 
-#endif  // QUADROTOR_MPCPP_INTERNAL_HPP_
+#endif  // MPCPP_INTERNAL_HPP_

@@ -3,11 +3,11 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-#include "quadrotor_mpcpp/quadrotor_mpc.hpp"
+#include "mpcpp/acados_mpc.hpp"
 
 #include <limits>
 
-#include "quadrotor_mpcpp/internal.hpp"
+#include "mpcpp/internal.hpp"
 
 extern "C" {
 #include "acados_c/ocp_nlp_interface.h"

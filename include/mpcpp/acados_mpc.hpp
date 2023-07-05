@@ -3,16 +3,16 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-#ifndef QUADROTOR_MPCPP_QUADROTOR_MPC_HPP_
-#define QUADROTOR_MPCPP_QUADROTOR_MPC_HPP_
+#ifndef MPCPP_ACADOS_MPC_HPP_
+#define MPCPP_ACADOS_MPC_HPP_
 
 #include <memory>
 #include <stdexcept>
 
 #include "Eigen/Core"
 #include "Eigen/Geometry"
-#include "quadrotor_mpcpp/internal.hpp"
-#include "quadrotor_mpcpp/solver_wrapper.hpp"
+#include "mpcpp/internal.hpp"
+#include "mpcpp/solver_wrapper.hpp"
 
 namespace control {
 
@@ -258,4 +258,4 @@ class AcadosMPC {
 };
 
 }  // namespace control
-#endif  // QUADROTOR_MPCPP_QUADROTOR_MPC_HPP_
+#endif  // MPCPP_ACADOS_MPC_HPP_

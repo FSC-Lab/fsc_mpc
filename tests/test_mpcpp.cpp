@@ -12,7 +12,7 @@
 #include "fscore/simulation/dynamic_system_simulator.hpp"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "quadrotor_mpcpp/quadrotor_mpc.hpp"
+#include "mpcpp/acados_mpc.hpp"
 
 #define RAPIDJSON_NOEXCEPT_ASSERT(cond) \
   do {                                  \

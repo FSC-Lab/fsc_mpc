@@ -3,12 +3,12 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-#ifndef QUADROTOR_MPCPP_SOLVER_WRAPPER_HPP_
-#define QUADROTOR_MPCPP_SOLVER_WRAPPER_HPP_
+#ifndef MPCPP_SOLVER_WRAPPER_HPP_
+#define MPCPP_SOLVER_WRAPPER_HPP_
 
 #include "acados/ocp_nlp/ocp_nlp_common.h"
 #include "acados_c/ocp_nlp_interface.h"
-#include "quadrotor_mpcpp/internal.hpp"
+#include "mpcpp/internal.hpp"
 
 #ifndef MODEL_NAME_UPPER
 #error MISSING DEFINITION FOR MODEL_NAME_UPPER
@@ -68,4 +68,4 @@ int Solve(SolverCapsule* capsule);
 void SetParameters(SolverCapsule* capsule, int stage, double* value);
 }  // namespace acadospp
 
-#endif  // QUADROTOR_MPCPP_SOLVER_WRAPPER_HPP_
+#endif  // MPCPP_SOLVER_WRAPPER_HPP_
