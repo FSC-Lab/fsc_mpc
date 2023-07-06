@@ -57,6 +57,10 @@ AcadosMPC& AcadosMPC::operator=(AcadosMPC&& other) noexcept {
 
 AcadosMPC::~AcadosMPC() { acadospp::FreeSolver(capsule()); }
 
+void AcadosMPC::resetSolver(bool reset_qp_solver_mem) {
+  acadospp::ResetSolver(capsule(), reset_qp_solver_mem);
+}
+
 void AcadosMPC::setInitialState(InRef<StateType> initial_state) {
   using details::MutData;
   ocp_nlp_constraints_model_set(config_, dims_, in_, 0, "lbx",
@@ -157,6 +161,10 @@ void AcadosMPC::setConstantParameters(InRef<ParamType> params) {
   }
 }
 
+void AcadosMPC::setPrintLevel(int value) {
+  ocp_nlp_solver_opts_set(config_, opts_, "print_level", &value);
+}
+
 AcadosMPC::InputType AcadosMPC::optimize(InRef<StateType> state) {
   setInitialState(state);
   ACADOS_CHECK(acadospp::Solve(capsule()));
@@ -172,6 +180,7 @@ void AcadosMPC::init() {
   in_ = acadospp::GetInput(capsule());
   out_ = acadospp::GetOutput(capsule());
   solver_ = acadospp::GetSolver(capsule());
+  opts_ = acadospp::GetOpts(capsule());
 
   // Initialize the state constraint
   StateIdxs constrained_state_idx = StateIdxs::LinSpaced(0, kStateSize - 1);
@@ -205,6 +214,12 @@ void AcadosMPC::setTerminalState(InRef<StateType> terminal_state) {
 void AcadosMPC::setInput(int i, InRef<InputType> input) {
   using details::MutData;
   ocp_nlp_out_set(config_, dims_, out_, i, "u", MutData(input));
+}
+
+double AcadosMPC::step_length(int i) const { return in_->Ts[i]; }
+
+Eigen::VectorXd AcadosMPC::step_length() const {
+  return Eigen::VectorXd::Map(in_->Ts, num_mpc_nodes());
 }
 
 int AcadosMPC::num_mpc_nodes() const { return dims_->N; }

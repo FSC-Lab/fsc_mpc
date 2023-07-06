@@ -221,6 +221,13 @@ class AcadosMPC {
   void setConstantParameters(InRef<ParamType> params);
 
   /**
+   * @brief Sets the print level of the solver
+   *
+   * @param value The print level
+   */
+  void setPrintLevel(int value);
+
+  /**
    * @brief Convenience method taking the current system state (to be passed to
    * setInitialState) and solves the optimal control problem, then return the
    * optimized input on the first step of the predicted input trajectory
@@ -230,6 +237,27 @@ class AcadosMPC {
    */
   InputType optimize(InRef<StateType> state);
 
+  /**
+   * @brief Gets the time step at a given shooting node
+   *
+   * @param i Index of the shooting node
+   * @return double Time step at given shooting node
+   */
+  double step_length(int i) const;
+
+  /**
+   * @brief Gets all the time steps over the entire prediction horizon
+   *
+   * @return Eigen::VectorXd A vector with size equal to the number of shooting
+   * nodes, containing the time steps
+   */
+  Eigen::VectorXd step_length() const;
+
+  /**
+   * @brief Gets the number of shooting nodes
+   *
+   * @return int Number of the shooting nodes
+   */
   int num_mpc_nodes() const;
 
  private:
@@ -253,6 +281,7 @@ class AcadosMPC {
   ocp_nlp_in *in_{nullptr};
   ocp_nlp_out *out_{nullptr};
   ocp_nlp_solver *solver_{nullptr};
+  ocp_nlp_opts *opts_{nullptr};
 };
 
 }  // namespace control

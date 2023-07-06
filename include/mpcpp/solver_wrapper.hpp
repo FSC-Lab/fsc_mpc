@@ -63,6 +63,8 @@ ocp_nlp_in* GetInput(SolverCapsule* capsule);
 
 ocp_nlp_out* GetOutput(SolverCapsule* capsule);
 
+ocp_nlp_opts* GetOpts(SolverCapsule* capsule);
+
 int Solve(SolverCapsule* capsule);
 
 void SetParameters(SolverCapsule* capsule, int stage, double* value);

@@ -45,6 +45,10 @@ ocp_nlp_out* GetOutput(SolverCapsule* capsule) {
   return ACADOS_OBJ(acados_get_nlp_out)(capsule);
 }
 
+ocp_nlp_opts* GetOpts(SolverCapsule* capsule) {
+  return static_cast<ocp_nlp_opts*>(ACADOS_OBJ(acados_get_nlp_opts)(capsule));
+}
+
 int Solve(SolverCapsule* capsule) { return ACADOS_OBJ(acados_solve)(capsule); }
 
 void SetParameters(SolverCapsule* capsule, int stage, double* value) {

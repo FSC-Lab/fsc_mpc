@@ -2,7 +2,6 @@
 #include <random>
 
 #include "benchmark/benchmark.h"
-#include "fscore/numbers/numbers.hpp"
 #include "mpcpp/acados_mpc.hpp"
 
 static std::random_device dev;
@@ -14,7 +13,8 @@ auto sample = [dist{std::uniform_real_distribution<>{0.0, 10.0}}]() mutable {
 
 static void BenchmarkMPC(benchmark::State& state) {
   const long int n_steps = state.range(0);
-  const Eigen::VectorXd time_steps = Eigen::VectorXd::LinSpaced(n_steps, 0, 20);
+  const Eigen::VectorXd time_steps =
+      Eigen::VectorXd::Constant(n_steps, 1.0 / static_cast<double>(n_steps));
   control::AcadosMPC mpc(time_steps);
 
   mpc.setConstantParameters(control::AcadosMPC::ParamType{1.0});
@@ -36,6 +36,7 @@ static void BenchmarkMPC(benchmark::State& state) {
   velocity.setZero();
   for (auto _ : state) {
     state.PauseTiming();
+    mpc.resetSolver(true);
     position.z() = sample();
 
     state.ResumeTiming();
