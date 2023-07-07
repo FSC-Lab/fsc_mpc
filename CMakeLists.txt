@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.14.0)
 project(mpcpp VERSION 0.0.1)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_FortranLibs ON)
+find_package(OpenMP REQUIRED)
 find_package(acados REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Python COMPONENTS Interpreter)
