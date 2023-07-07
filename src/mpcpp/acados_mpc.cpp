@@ -85,10 +85,10 @@ void AcadosMPC::setCosts(InRef<StateCostType> Q, InRef<InputCostType> R) {
   Eigen::Matrix<double, kRefSize, kRefSize> costs;
   costs.topLeftCorner<kCostSize, kCostSize>() = Q;
   costs.bottomRightCorner<kInputSize, kInputSize>() = R;
-  for (int i = 0; i < kSamples; ++i) {
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
     ocp_nlp_cost_model_set(config_, dims_, in_, i, "W", MutData(costs));
   }
-  ocp_nlp_cost_model_set(config_, dims_, in_, kSamples, "W", MutData(Q));
+  ocp_nlp_cost_model_set(config_, dims_, in_, num_mpc_nodes(), "W", MutData(Q));
 }
 
 void AcadosMPC::setCostWeights(InRef<StateCostWeightType> q_weights,
@@ -148,7 +148,8 @@ void AcadosMPC::setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
     ref << state_ref.col(i_state), input_ref.col(i_input);
     setReference(i, ref);
   }
-  setTerminalReference(state_ref.col(std::min<int>(n_x_samples - 1, kSamples)));
+  setTerminalReference(
+      state_ref.col(std::min<int>(n_x_samples - 1, num_mpc_nodes())));
 }
 
 void AcadosMPC::setParameters(int i, InRef<ParamType> params) {
@@ -156,7 +157,7 @@ void AcadosMPC::setParameters(int i, InRef<ParamType> params) {
 }
 
 void AcadosMPC::setConstantParameters(InRef<ParamType> params) {
-  for (int i = 0; i < kSamples; ++i) {
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
     setParameters(i, params);
   }
 }
@@ -208,7 +209,7 @@ void AcadosMPC::setState(int i, InRef<StateType> state) {
 }
 
 void AcadosMPC::setTerminalState(InRef<StateType> terminal_state) {
-  setState(kSamples, terminal_state);
+  setState(num_mpc_nodes(), terminal_state);
 }
 
 void AcadosMPC::setInput(int i, InRef<InputType> input) {
