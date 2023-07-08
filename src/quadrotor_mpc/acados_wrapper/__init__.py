@@ -1,1 +1,6 @@
-from .acados_wrapper import AcadosWrapper, AcadosWrapperException, make_quadrotor_model
+from .acados_wrapper import (
+    AcadosWrapper,
+    AcadosWrapperException,
+    AcadosWrapperParams,
+    make_quadrotor_model,
+)

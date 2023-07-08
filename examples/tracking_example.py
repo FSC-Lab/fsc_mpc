@@ -127,15 +127,23 @@ def main():
 
     codegen_dir = Path(args.codegen_dir)
     # Initialize quad MPC
-    if codegen_dir.exists():
-        solver = acados_wrapper.AcadosWrapper.restore_from_file(str(codegen_dir))
-    else:
-        solver = acados_wrapper.AcadosWrapper.make_new(
-            1.0,
-            10,
-            acados_wrapper.make_quadrotor_model("quadrotor"),
-            codegen_dst=str(codegen_dir),
-        )
+    params = acados_wrapper.AcadosWrapperParams(
+        t_horizon=t_horizon,
+        n_nodes=n_mpc_nodes,
+        q_cost=np.array(
+            [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05], dtype=np.float64
+        ),
+        r_cost=np.asarray([0.1, 0.1, 0.1, 0.1], dtype=np.float64),
+        lbu=np.array([0.0, -8.0, -8.0, -8.0], dtype=np.float64),
+        ubu=np.array([80.0, 8.0, 8.0, 8.0], dtype=np.float64),
+        solver_options=None,
+    )
+    solver = acados_wrapper.AcadosWrapper(
+        acados_wrapper.make_quadrotor_model("quadrotor"),
+        params,
+        codegen_dst=str(codegen_dir),
+        clean_first=True,
+    )
 
     solver.set_constant_parameter([QUADROTOR_MASS])
 
