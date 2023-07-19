@@ -5,21 +5,18 @@
 
 import time
 
-import fscore as fsc
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
+from acados_wrapper import acados_wrapper
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.transform import Rotation
 
-from .. import trajectory_generator
-from ..acados_wrapper import acados_wrapper
-
 
 def run_simulation(
-    sim: fsc.simulation.SimpleQuadrotorSimulator,
-    solver: acados_wrapper.AcadosWrapper,
-    trajectory: trajectory_generator.trajectories.Trajectory,
+    sim,
+    solver,
+    trajectory,
     reference_over_sampling: int,
     profile_data=False,
     show_progress=True,
@@ -89,7 +86,7 @@ def run_simulation(
 def visualize_tracking_results(
     tout,
     yout,
-    trajectory: trajectory_generator.trajectories.Trajectory,
+    trajectory,
     handles=None,
     autoshow=False,
 ):

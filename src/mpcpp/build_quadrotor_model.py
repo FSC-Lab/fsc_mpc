@@ -2,7 +2,7 @@
 
 import argparse
 
-from quadrotor_mpc import acados_wrapper
+import acados_wrapper
 
 
 def parse_cli():
@@ -18,12 +18,14 @@ def parse_cli():
 
 def main():
     args = parse_cli()
-    t_horizon = 1.0
-    n_nodes = 10
+    params = {
+        "t_horizon": 1.0,
+        "n_nodes": 10,
+        "q_cost": [10, 10, 10, 1, 1, 1, 0, 0.1, 0.1, 0.1],
+        "r_cost": [0.1, 0.1, 0.1, 0.1],
+    }
     model = acados_wrapper.make_quadrotor_model(args.name)
-    _ = acados_wrapper.AcadosWrapper.make_new(
-        t_horizon, n_nodes, model, codegen_dst=args.codegen_dst
-    )
+    _ = acados_wrapper.AcadosWrapper(model, params, codegen_dst=args.codegen_dst)
 
 
 if __name__ == "__main__":

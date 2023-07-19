@@ -5,12 +5,13 @@
 
 import json
 from argparse import ArgumentParser
-from pathlib import Path
 
 import fscore.simulation as sim
 import numpy as np
+import trajectory_generator
+import utils
 
-from quadrotor_mpc import acados_wrapper, trajectory_generator, utils
+import acados_wrapper
 
 REFERENCE_OVER_SAMPLING = 1
 T_HORIZON = 1.0
@@ -82,7 +83,7 @@ def main():
     )
 
     # Initialize quad MPC
-    solver = acados_wrapper.AcadosWrapper.restore_from_file(args.codegen_dir)
+    solver = acados_wrapper.AcadosWrapper(None, None, codegen_dst=args.codegen_dir)
 
     solver.set_constant_parameter([params["quadrotor_mass"]])
 

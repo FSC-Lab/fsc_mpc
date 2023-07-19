@@ -11,8 +11,9 @@ set(TEST_DATA_FILE ${CMAKE_CURRENT_SOURCE_DIR}/test_data.json)
 
 add_custom_command(
   OUTPUT ${TEST_DATA_FILE}
-  COMMAND PYTHONPATH=${CMAKE_SOURCE_DIR}/src ${Python_EXECUTABLE}
-          generate_test_data.py ${TEST_DATA_FILE} ${CODEGEN_DIR}
+  COMMAND
+    PYTHONPATH=${CMAKE_SOURCE_DIR}/src:${CMAKE_SOURCE_DIR}/examples
+    ${Python_EXECUTABLE} generate_test_data.py ${TEST_DATA_FILE} ${CODEGEN_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Generating test data"
   VERBATIM)

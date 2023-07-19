@@ -4,27 +4,20 @@
 # https://opensource.org/licenses/MIT
 
 import pathlib
-from os import PathLike
-from typing import Dict, Optional, Union
 
 import casadi as cs
 import numpy as np
 import scipy.linalg
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-from numpy.typing import ArrayLike
 
 from .models import symbolic_quadrotor
-
-import dataclasses
 
 
 class AcadosWrapperException(Exception):
     pass
 
 
-def make_quadrotor_model(
-    model_name: str, mass: Union[float, cs.MX] = cs.MX.sym("mass")
-):
+def make_quadrotor_model(model_name, mass=cs.MX.sym("mass")):
     # Declare model variables
     x = cs.MX.sym("x", 10)  # type: ignore
     u = cs.MX.sym("u", 4)  # type: ignore
@@ -47,17 +40,6 @@ def make_quadrotor_model(
     return acados_model
 
 
-@dataclasses.dataclass
-class AcadosWrapperParams:
-    t_horizon: float
-    n_nodes: int
-    q_cost: np.ndarray
-    r_cost: np.ndarray
-    lbu: np.ndarray
-    ubu: np.ndarray
-    solver_options: Optional[Dict[str, str]]
-
-
 class AcadosWrapper:
     """
     A wrapper over AcadosOcpSolver that abstracts away some operations such as
@@ -66,22 +48,11 @@ class AcadosWrapper:
 
     def __init__(
         self,
-        model: AcadosModel,
-        params: AcadosWrapperParams,
-        codegen_dst: Union[str, PathLike] = "lib",
-        clean_first: bool = False,
+        model,
+        params,
+        codegen_dst="lib",
+        clean_first=False,
     ):
-        self._n_nodes = params.n_nodes
-
-        # Create OCP object to formulate the optimization
-        ocp = AcadosOcp()
-        ocp.model = model
-        self._nx = cs.MX(model.x).size(1)
-        self._nu = cs.MX(model.u).size(1)
-        if isinstance(model.p, cs.MX) and model.p.size(1):
-            ocp.parameter_values = np.zeros(model.p.size(1))
-        self._ny = self._nx + self._nu
-
         codegen_dst = pathlib.Path(codegen_dst)
 
         if codegen_dst.exists() and codegen_dst.is_file():
@@ -92,20 +63,30 @@ class AcadosWrapper:
 
         json_file = codegen_dst / "acados_ocp_nlp.json"
 
+        ocp = AcadosOcp()
         if json_file.exists() and not clean_first:
-            ocp = AcadosOcp()
             build = False
             generate = False
         else:
             build = True
             generate = True
+            self._n_nodes = params["n_nodes"]
+
+            # Create OCP object to formulate the optimization
+            ocp.model = model
+            self._nx = cs.MX(model.x).size(1)
+            self._nu = cs.MX(model.u).size(1)
+            if isinstance(model.p, cs.MX) and model.p.size(1):
+                ocp.parameter_values = np.zeros(model.p.size(1))
+            self._ny = self._nx + self._nu
+
             # Solver options
-            ocp.dims.N = params.n_nodes
-            ocp.solver_options.tf = params.t_horizon
+            ocp.dims.N = params["n_nodes"]
+            ocp.solver_options.tf = params["t_horizon"]
 
             ocp.cost.cost_type = "LINEAR_LS"
             ocp.cost.cost_type_e = "LINEAR_LS"
-            q_cost, r_cost = params.q_cost, params.r_cost
+            q_cost, r_cost = np.asarray(params["q_cost"]), np.asarray(params["r_cost"])
             if q_cost.size != self._nx:
                 raise AcadosWrapperException(
                     f"Number of state weights does not match the state dimension {self._nx}"
@@ -131,7 +112,9 @@ class AcadosWrapper:
             ocp.constraints.x0 = symbolic_quadrotor.DEFAULT_STATE
 
             # Set constraints
-            lbu, ubu = params.lbu, params.ubu
+            high_bounds = np.full(self._nu, 1e10)
+            lbu = np.asarray(params.get("lbu", -high_bounds))
+            ubu = np.asarray(params.get("ubu", high_bounds))
             if lbu.size != self._nu or ubu.size != self._nu:
                 raise AcadosWrapperException(
                     "Number of input bounds does not match the input dimension 4"
@@ -140,11 +123,13 @@ class AcadosWrapper:
             ocp.constraints.ubu = ubu
             ocp.constraints.idxbu = np.r_[0:4]
             ocp.code_export_directory = str(codegen_dst)
-            if params.solver_options is not None:
-                for k, v in params.solver_options.items():
+            try:
+                for k, v in params["solver_options"].items():
                     if isinstance(v, str):
                         v = v.upper()
                     ocp.solver_options.set(k, v)
+            except KeyError:
+                pass
 
         self._solver = AcadosOcpSolver(
             ocp, str(json_file), build=build, generate=generate
@@ -158,7 +143,7 @@ class AcadosWrapper:
     def reset(self, reset_qp_solver_mem=1):
         self._solver.reset(reset_qp_solver_mem=reset_qp_solver_mem)
 
-    def set_costs(self, q_cost: ArrayLike, r_cost: ArrayLike):
+    def set_costs(self, q_cost, r_cost):
         q_cost = np.asarray(q_cost, dtype=np.float64)
         r_cost = np.asarray(r_cost, dtype=np.float64)
 
@@ -186,11 +171,7 @@ class AcadosWrapper:
     def n_nodes(self):
         return self._n_nodes
 
-    def set_reference_trajectory(
-        self,
-        x_reference: ArrayLike,
-        u_reference: ArrayLike,
-    ) -> None:
+    def set_reference_trajectory(self, x_reference, u_reference):
         """Sets a target trajectory for the Optimal Control Problem solver
 
         Parameters

@@ -8,8 +8,10 @@ from pathlib import Path
 
 import fscore.simulation as sim
 import numpy as np
+import trajectory_generator
+import utils
 
-from quadrotor_mpc import acados_wrapper, trajectory_generator, utils
+import acados_wrapper
 
 
 def parse_cli():
@@ -127,22 +129,19 @@ def main():
 
     codegen_dir = Path(args.codegen_dir)
     # Initialize quad MPC
-    params = acados_wrapper.AcadosWrapperParams(
-        t_horizon=t_horizon,
-        n_nodes=n_mpc_nodes,
-        q_cost=np.array(
-            [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05], dtype=np.float64
-        ),
-        r_cost=np.asarray([0.1, 0.1, 0.1, 0.1], dtype=np.float64),
-        lbu=np.array([0.0, -8.0, -8.0, -8.0], dtype=np.float64),
-        ubu=np.array([80.0, 8.0, 8.0, 8.0], dtype=np.float64),
-        solver_options=None,
-    )
+    params = {
+        "t_horizon": t_horizon,
+        "n_nodes": n_mpc_nodes,
+        "q_cost": [10, 10, 10, 0.1, 0.1, 0.1, 0.0, 0.05, 0.05, 0.05],
+        "r_cost": np.asarray([0.1, 0.1, 0.1, 0.1], dtype=np.float64),
+        "lbu": np.array([0.0, -8.0, -8.0, -8.0], dtype=np.float64),
+        "ubu": np.array([80.0, 8.0, 8.0, 8.0], dtype=np.float64),
+    }
     solver = acados_wrapper.AcadosWrapper(
         acados_wrapper.make_quadrotor_model("quadrotor"),
         params,
         codegen_dst=str(codegen_dir),
-        clean_first=True,
+        clean_first=False,
     )
 
     solver.set_constant_parameter([QUADROTOR_MASS])
