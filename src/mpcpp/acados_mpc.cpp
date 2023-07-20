@@ -123,6 +123,23 @@ AcadosMPC::InputType AcadosMPC::getInput(int i) const {
   return res;
 }
 
+AcadosMPC::StateTrajectoryType AcadosMPC::getState() const {
+  StateTrajectoryType predicted_states(static_cast<int>(kStateSize),
+                                       num_mpc_nodes());
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
+    predicted_states.col(i) = getState(i);
+  }
+  return predicted_states;
+}
+
+AcadosMPC::InputTrajectoryType AcadosMPC::getInput() const {
+  InputTrajectoryType inputs(static_cast<int>(kInputSize), num_mpc_nodes());
+  for (int i = 0; i < num_mpc_nodes(); ++i) {
+    inputs.col(i) = getInput(i);
+  }
+  return inputs;
+}
+
 void AcadosMPC::setReferenceState(InRef<StateType> state,
                                   InRef<InputType> input) {
   const RefType ref = (RefType() << state, input).finished();

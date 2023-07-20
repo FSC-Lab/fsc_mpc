@@ -178,6 +178,22 @@ class AcadosMPC {
   [[nodiscard]] InputType getInput(int i) const;
 
   /**
+   * @brief Get the state predicted by the solver over all shooting nodes
+   *
+   * @return InputType The state vector for each shooting node stacked over the
+   * last axis
+   */
+  StateTrajectoryType getState() const;
+
+  /**
+   * @brief Get the input predicted by the solver over all shooting nodes
+   *
+   * @return InputType The input vector for each shooting node stacked over the
+   * last axis
+   */
+  InputTrajectoryType getInput() const;
+
+  /**
    * @brief Set the state and input reference over all shooting nodes to a
    * single state and input setpoint
    *
