@@ -82,11 +82,11 @@ void AcadosMPC::setTerminalReference(InRef<EndRefType> terminal_ref) {
 
 void AcadosMPC::setCosts(InRef<StateCostType> Q, InRef<InputCostType> R) {
   using details::MutData;
-  Eigen::Matrix<double, kRefSize, kRefSize> costs;
+  CostType costs = CostType::Zero();
   costs.topLeftCorner<kCostSize, kCostSize>() = Q;
   costs.bottomRightCorner<kInputSize, kInputSize>() = R;
   for (int i = 0; i < num_mpc_nodes(); ++i) {
-    ocp_nlp_cost_model_set(config_, dims_, in_, i, "W", MutData(costs));
+    ocp_nlp_cost_model_set(config_, dims_, in_, i, "W", costs.data());
   }
   ocp_nlp_cost_model_set(config_, dims_, in_, num_mpc_nodes(), "W", MutData(Q));
 }
