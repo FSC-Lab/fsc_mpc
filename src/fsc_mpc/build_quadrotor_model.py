@@ -13,14 +13,20 @@ def parse_cli():
     parser.add_argument(
         "--name", type=str, default="codegen_model", help="Name of the model"
     )
+    parser.add_argument(
+        "--horizon", type=float, default=1.0, help="Prediction horizon of the MPC"
+    )
+    parser.add_argument(
+        "--n_nodes", type=int, default=10, help="Number of shooting nodes of the MPC"
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_cli()
     params = {
-        "t_horizon": 1.0,
-        "n_nodes": 10,
+        "t_horizon": args.horizon,
+        "n_nodes": args.n_nodes,
         "q_cost": [10, 10, 10, 1, 1, 1, 0, 0.1, 0.1, 0.1],
         "r_cost": [0.1, 0.1, 0.1, 0.1],
     }
