@@ -44,6 +44,7 @@ target_include_directories(
 target_link_libraries(fsc_mpc_solver PUBLIC acados blasfeo hpipm)
 add_library(fsc_mpc::solver ALIAS fsc_mpc_solver)
 set_property(TARGET fsc_mpc_solver PROPERTY EXPORT_NAME solver)
+set_property(TARGET fsc_mpc_solver PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 # Step 3: Compile the OOPified MPC solver
 add_library(fsc_mpc_mpc_interface src/fsc_mpc/mpc_interface.cpp)
@@ -55,6 +56,7 @@ target_link_libraries(fsc_mpc_mpc_interface PUBLIC fsc_mpc::solver
                                                    Eigen3::Eigen)
 set_property(TARGET fsc_mpc_mpc_interface PROPERTY EXPORT_NAME mpc_interface)
 add_library(fsc_mpc::mpc_interface ALIAS fsc_mpc_mpc_interface)
+set_property(TARGET fsc_mpc_mpc_interface PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 include(CTest)
 if(BUILD_TESTING)
