@@ -1,3 +1,24 @@
+// Tests the MPC against simulation data collected in Python
+// Copyright © 2023 FSC Lab
+//
+// Permission is hereby granted, free of charge, to any person obtaining
+// a copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+// OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -7,12 +28,12 @@
 #include <string>
 #include <unordered_map>
 
+#include "fsc_mpc/mpc_interface.hpp"
 #include "fscore/math/math_extras.hpp"
 #include "fscore/models/simple_quadrotor.hpp"
 #include "fscore/simulation/dynamic_system_simulator.hpp"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "fsc_mpc/mpc_interface.hpp"
 
 #define RAPIDJSON_NOEXCEPT_ASSERT(cond) \
   do {                                  \
@@ -51,6 +72,7 @@ MATCHER_P(QuaternionIsClose, expected, ::testing::PrintToString(expected)) {
   return true;
 }
 
+// NOLINTNEXTLINE
 void Check3DTrajectories(const Eigen::MatrixXd& a_matrix,
                          const Eigen::MatrixXd& b_matrix, double rtol,
                          double atol) {
@@ -108,6 +130,7 @@ class TestMPCInterface : public ::testing::Test {
 
   void RunSimulation();
   static constexpr double kRelativeTolerance = 1e-4;
+  static constexpr double kAbsoluteTolerance = 1e-4;
 
   std::unordered_map<std::string, Eigen::MatrixXd> sim_out;
   std::unordered_map<std::string, Eigen::MatrixXd> trajectory;
@@ -124,6 +147,7 @@ class TestMPCInterface : public ::testing::Test {
   double sim_period_{-1};
 };
 
+// NOLINTNEXTLINE
 void TestMPCInterface::SetUp() {
   std::ifstream fp(TEST_DATA_FILE);
 
@@ -147,12 +171,15 @@ void TestMPCInterface::SetUp() {
   ASSERT_NO_THROW(control_period_ =
                       doc["params"]["control_period"].GetDouble());
   ASSERT_NO_THROW(sim_period_ = doc["params"]["sim_period"].GetDouble());
-  MdlType model(mass, -9.81);
-  sim_ = std::make_unique<SimType>(model, 5e-4, trajectory["time"].coeff(0),
-                                   trajectory["states"].col(0),
-                                   trajectory["inputs"].col(0));
+  constexpr double kGravAccel = -9.81;
+  MdlType model(mass, kGravAccel);
+  sim_ = std::make_unique<SimType>(
+      model, sim_period_, trajectory["time"].coeff(0),
+      trajectory["states"].col(0), trajectory["inputs"].col(0));
 
-  sim_->setSimulationPostUpdateCallback([](auto&& states, auto&&, auto) {
+  sim_->setSimulationPostUpdateCallback([](auto&& states,
+                                           [[maybe_unused]] auto&& input,
+                                           [[maybe_unused]] auto _) {
     ASSERT_TRUE(
         fsc::IsClose(states.template segment<4>(3).norm(), 1.0, {1e-4, 1.0}));
   });
@@ -207,8 +234,9 @@ TEST_F(TestMPCInterface, testPosition) {
   RunSimulation();
   const Eigen::MatrixXd expected_position = expected_states.topRows(3);
   const Eigen::MatrixXd actual_position = actual_states.topRows(3);
+  constexpr auto kPositionRelativeTolerance = 100 * kRelativeTolerance;
   Check3DTrajectories(expected_position, actual_position,
-                      100 * kRelativeTolerance, 1e-4);
+                      kPositionRelativeTolerance, kAbsoluteTolerance);
 }
 
 TEST_F(TestMPCInterface, testAttitude) {
@@ -226,7 +254,8 @@ TEST_F(TestMPCInterface, testVelocity) {
   RunSimulation();
   const Eigen::MatrixXd expected_vel = expected_states.bottomRows(3);
   const Eigen::MatrixXd actual_vel = expected_states.bottomRows(3);
-  Check3DTrajectories(expected_vel, actual_vel, kRelativeTolerance, 1e-4);
+  Check3DTrajectories(expected_vel, actual_vel, kRelativeTolerance,
+                      kAbsoluteTolerance);
 }
 
 int main(int argc, char** argv) {

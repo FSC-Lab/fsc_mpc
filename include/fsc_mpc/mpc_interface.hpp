@@ -1,7 +1,23 @@
-// Copyright (c) 2023 hs293go
+// The primary OOP-style interface to the acados MPC
+// Copyright © 2023 FSC Lab
 //
-// This software is released under the MIT License.
-// https://opensource.org/licenses/MIT
+// Permission is hereby granted, free of charge, to any person obtaining
+// a copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+// TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+// OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #ifndef FSC_MPC_MPC_INTERFACE_HPP_
 #define FSC_MPC_MPC_INTERFACE_HPP_
@@ -9,8 +25,7 @@
 #include <memory>
 #include <stdexcept>
 
-#include "Eigen/Core"
-#include "Eigen/Geometry"
+#include "Eigen/Dense"
 #include "fsc_mpc/internal.hpp"
 #include "fsc_mpc/solver_wrapper.hpp"
 
@@ -80,8 +95,6 @@ class MPCInterface {
   // https://stackoverflow.com/questions/21132538/correct-usage-of-the-eigenref-class
   template <typename T>
   using InRef = const Eigen::Ref<const T> &;
-
-  static constexpr double kGravAccel{9.81};
 
   static const BoundsType kNoBounds;
 
@@ -183,7 +196,7 @@ class MPCInterface {
    * @return InputType The state vector for each shooting node stacked over the
    * last axis
    */
-  StateTrajectoryType getState() const;
+  [[nodiscard]] StateTrajectoryType getState() const;
 
   /**
    * @brief Get the input predicted by the solver over all shooting nodes
@@ -191,7 +204,7 @@ class MPCInterface {
    * @return InputType The input vector for each shooting node stacked over the
    * last axis
    */
-  InputTrajectoryType getInput() const;
+  [[nodiscard]] InputTrajectoryType getInput() const;
 
   /**
    * @brief Set the state and input reference over all shooting nodes to a
@@ -259,7 +272,7 @@ class MPCInterface {
    * @param i Index of the shooting node
    * @return double Time step at given shooting node
    */
-  double step_length(int i) const;
+  [[nodiscard]] double step_length(int i) const;
 
   /**
    * @brief Gets all the time steps over the entire prediction horizon
@@ -267,14 +280,14 @@ class MPCInterface {
    * @return Eigen::VectorXd A vector with size equal to the number of shooting
    * nodes, containing the time steps
    */
-  Eigen::VectorXd step_length() const;
+  [[nodiscard]] Eigen::VectorXd step_length() const;
 
   /**
    * @brief Gets the number of shooting nodes
    *
    * @return int Number of the shooting nodes
    */
-  int num_mpc_nodes() const;
+  [[nodiscard]] int num_mpc_nodes() const;
 
  private:
   using Capsule = details::Handle<SolverCapsule, FreeCapsule>;
