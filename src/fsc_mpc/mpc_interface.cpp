@@ -3,11 +3,11 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-#include "mpcpp/acados_mpc.hpp"
+#include "fsc_mpc/mpc_interface.hpp"
 
 #include <limits>
 
-#include "mpcpp/internal.hpp"
+#include "fsc_mpc/internal.hpp"
 
 extern "C" {
 #include "acados_c/ocp_nlp_interface.h"
@@ -20,29 +20,31 @@ extern "C" {
     }                                                                     \
   } while (0)
 
-namespace control {
+namespace fsc::control {
 
-constexpr double AcadosMPC::kGravAccel;
+constexpr double MPCInterface::kGravAccel;
 
-const AcadosMPC::BoundsType AcadosMPC::kNoBounds =
-    AcadosMPC::BoundsType::Constant(1e50);
+const MPCInterface::BoundsType MPCInterface::kNoBounds =
+    MPCInterface::BoundsType::Constant(1e50);
 
-AcadosMPC::AcadosMPC() : capsule_(acadospp::CreateCapsule()) {
-  ACADOS_CHECK(acadospp::CreateSolver(capsule()));
+MPCInterface::MPCInterface() : capsule_(CreateCapsule()) {
+  ACADOS_CHECK(CreateSolver(capsule()));
   init();
 }
 
-AcadosMPC::AcadosMPC(InRef<Eigen::VectorXd> time_steps)
-    : capsule_(acadospp::CreateCapsule()) {
+MPCInterface::MPCInterface(InRef<Eigen::VectorXd> time_steps)
+    : capsule_(CreateCapsule()) {
   using details::MutData;
-  ACADOS_CHECK(acadospp::CreateSolverWithDiscretization(
+  ACADOS_CHECK(CreateSolverWithDiscretization(
       capsule(), static_cast<int>(time_steps.size()), MutData(time_steps)));
   init();
 }
 
-AcadosMPC::AcadosMPC(AcadosMPC&& other) noexcept { *this = std::move(other); }
+MPCInterface::MPCInterface(MPCInterface&& other) noexcept {
+  *this = std::move(other);
+}
 
-AcadosMPC& AcadosMPC::operator=(AcadosMPC&& other) noexcept {
+MPCInterface& MPCInterface::operator=(MPCInterface&& other) noexcept {
   using std::swap;
   if (this != &other) {
     swap(other.capsule_, capsule_);
@@ -55,13 +57,13 @@ AcadosMPC& AcadosMPC::operator=(AcadosMPC&& other) noexcept {
   return *this;
 }
 
-AcadosMPC::~AcadosMPC() { acadospp::FreeSolver(capsule()); }
+MPCInterface::~MPCInterface() { FreeSolver(capsule()); }
 
-void AcadosMPC::resetSolver(bool reset_qp_solver_mem) {
-  acadospp::ResetSolver(capsule(), reset_qp_solver_mem);
+void MPCInterface::resetSolver(bool reset_qp_solver_mem) {
+  ResetSolver(capsule(), reset_qp_solver_mem);
 }
 
-void AcadosMPC::setInitialState(InRef<StateType> initial_state) {
+void MPCInterface::setInitialState(InRef<StateType> initial_state) {
   using details::MutData;
   ocp_nlp_constraints_model_set(config_, dims_, in_, 0, "lbx",
                                 MutData(initial_state));
@@ -69,18 +71,18 @@ void AcadosMPC::setInitialState(InRef<StateType> initial_state) {
                                 MutData(initial_state));
 }
 
-void AcadosMPC::setReference(int i, InRef<RefType> ref) {
+void MPCInterface::setReference(int i, InRef<RefType> ref) {
   using details::MutData;
   ocp_nlp_cost_model_set(config_, dims_, in_, i, "y_ref", MutData(ref));
 }
 
-void AcadosMPC::setTerminalReference(InRef<EndRefType> terminal_ref) {
+void MPCInterface::setTerminalReference(InRef<EndRefType> terminal_ref) {
   using details::MutData;
   ocp_nlp_cost_model_set(config_, dims_, in_, num_mpc_nodes(), "y_ref",
                          MutData(terminal_ref));
 }
 
-void AcadosMPC::setCosts(InRef<StateCostType> Q, InRef<InputCostType> R) {
+void MPCInterface::setCosts(InRef<StateCostType> Q, InRef<InputCostType> R) {
   using details::MutData;
   CostType costs = CostType::Zero();
   costs.topLeftCorner<kCostSize, kCostSize>() = Q;
@@ -91,13 +93,13 @@ void AcadosMPC::setCosts(InRef<StateCostType> Q, InRef<InputCostType> R) {
   ocp_nlp_cost_model_set(config_, dims_, in_, num_mpc_nodes(), "W", MutData(Q));
 }
 
-void AcadosMPC::setCostWeights(InRef<StateCostWeightType> q_weights,
-                               InRef<InputCostWeightType> r_weights) {
+void MPCInterface::setCostWeights(InRef<StateCostWeightType> q_weights,
+                                  InRef<InputCostWeightType> r_weights) {
   setCosts(StateCostType(q_weights.asDiagonal()),
            InputCostType(r_weights.asDiagonal()));
 }
 
-void AcadosMPC::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
+void MPCInterface::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
   using details::MutData;
   if ((lbu.array() > ubu.array()).any()) {
     throw AcadosWrapperException(
@@ -111,19 +113,19 @@ void AcadosMPC::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
   }
 }
 
-AcadosMPC::StateType AcadosMPC::getState(int i) const {
+MPCInterface::StateType MPCInterface::getState(int i) const {
   StateType res;
   ocp_nlp_out_get(config_, dims_, out_, i, "x", res.data());
   return res;
 }
 
-AcadosMPC::InputType AcadosMPC::getInput(int i) const {
+MPCInterface::InputType MPCInterface::getInput(int i) const {
   InputType res;
   ocp_nlp_out_get(config_, dims_, out_, i, "u", res.data());
   return res;
 }
 
-AcadosMPC::StateTrajectoryType AcadosMPC::getState() const {
+MPCInterface::StateTrajectoryType MPCInterface::getState() const {
   StateTrajectoryType predicted_states(static_cast<int>(kStateSize),
                                        num_mpc_nodes());
   for (int i = 0; i < num_mpc_nodes(); ++i) {
@@ -132,7 +134,7 @@ AcadosMPC::StateTrajectoryType AcadosMPC::getState() const {
   return predicted_states;
 }
 
-AcadosMPC::InputTrajectoryType AcadosMPC::getInput() const {
+MPCInterface::InputTrajectoryType MPCInterface::getInput() const {
   InputTrajectoryType inputs(static_cast<int>(kInputSize), num_mpc_nodes());
   for (int i = 0; i < num_mpc_nodes(); ++i) {
     inputs.col(i) = getInput(i);
@@ -140,8 +142,8 @@ AcadosMPC::InputTrajectoryType AcadosMPC::getInput() const {
   return inputs;
 }
 
-void AcadosMPC::setReferenceState(InRef<StateType> state,
-                                  InRef<InputType> input) {
+void MPCInterface::setReferenceState(InRef<StateType> state,
+                                     InRef<InputType> input) {
   const RefType ref = (RefType() << state, input).finished();
   for (int i = 0; i < num_mpc_nodes(); ++i) {
     setReference(i, ref);
@@ -149,8 +151,9 @@ void AcadosMPC::setReferenceState(InRef<StateType> state,
   setTerminalReference(state);
 }
 
-void AcadosMPC::setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
-                                       InRef<InputTrajectoryType> input_ref) {
+void MPCInterface::setReferenceTrajectory(
+    InRef<StateTrajectoryType> state_ref,
+    InRef<InputTrajectoryType> input_ref) {
   const int n_x_samples = static_cast<int>(state_ref.cols());
   const int n_u_samples = static_cast<int>(input_ref.cols());
   if (n_x_samples != n_u_samples && n_x_samples != n_u_samples + 1) {
@@ -169,36 +172,36 @@ void AcadosMPC::setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
       state_ref.col(std::min<int>(n_x_samples - 1, num_mpc_nodes())));
 }
 
-void AcadosMPC::setParameters(int i, InRef<ParamType> params) {
-  acadospp::SetParameters(capsule(), i, details::MutData(params));
+void MPCInterface::setParameters(int i, InRef<ParamType> params) {
+  SetParameters(capsule(), i, details::MutData(params));
 }
 
-void AcadosMPC::setConstantParameters(InRef<ParamType> params) {
+void MPCInterface::setConstantParameters(InRef<ParamType> params) {
   for (int i = 0; i < num_mpc_nodes(); ++i) {
     setParameters(i, params);
   }
 }
 
-void AcadosMPC::setPrintLevel(int value) {
+void MPCInterface::setPrintLevel(int value) {
   ocp_nlp_solver_opts_set(config_, opts_, "print_level", &value);
 }
 
-AcadosMPC::InputType AcadosMPC::optimize(InRef<StateType> state) {
+MPCInterface::InputType MPCInterface::optimize(InRef<StateType> state) {
   setInitialState(state);
-  ACADOS_CHECK(acadospp::Solve(capsule()));
+  ACADOS_CHECK(Solve(capsule()));
   return getInput(0);
 }
 
-void AcadosMPC::init() {
+void MPCInterface::init() {
   using StateIdxs = Eigen::Matrix<int, kStateSize, 1>;
   using InputIdxs = Eigen::Matrix<int, kInputSize, 1>;
 
-  config_ = acadospp::GetConfig(capsule());
-  dims_ = acadospp::GetDims(capsule());
-  in_ = acadospp::GetInput(capsule());
-  out_ = acadospp::GetOutput(capsule());
-  solver_ = acadospp::GetSolver(capsule());
-  opts_ = acadospp::GetOpts(capsule());
+  config_ = GetConfig(capsule());
+  dims_ = GetDims(capsule());
+  in_ = GetInput(capsule());
+  out_ = GetOutput(capsule());
+  solver_ = GetSolver(capsule());
+  opts_ = GetOpts(capsule());
 
   // Initialize the state constraint
   StateIdxs constrained_state_idx = StateIdxs::LinSpaced(0, kStateSize - 1);
@@ -220,26 +223,26 @@ void AcadosMPC::init() {
   setTerminalState(StateType::Zero());
 }
 
-void AcadosMPC::setState(int i, InRef<StateType> state) {
+void MPCInterface::setState(int i, InRef<StateType> state) {
   using details::MutData;
   ocp_nlp_out_set(config_, dims_, out_, i, "x", MutData(state));
 }
 
-void AcadosMPC::setTerminalState(InRef<StateType> terminal_state) {
+void MPCInterface::setTerminalState(InRef<StateType> terminal_state) {
   setState(num_mpc_nodes(), terminal_state);
 }
 
-void AcadosMPC::setInput(int i, InRef<InputType> input) {
+void MPCInterface::setInput(int i, InRef<InputType> input) {
   using details::MutData;
   ocp_nlp_out_set(config_, dims_, out_, i, "u", MutData(input));
 }
 
-double AcadosMPC::step_length(int i) const { return in_->Ts[i]; }
+double MPCInterface::step_length(int i) const { return in_->Ts[i]; }
 
-Eigen::VectorXd AcadosMPC::step_length() const {
+Eigen::VectorXd MPCInterface::step_length() const {
   return Eigen::VectorXd::Map(in_->Ts, num_mpc_nodes());
 }
 
-int AcadosMPC::num_mpc_nodes() const { return dims_->N; }
+int MPCInterface::num_mpc_nodes() const { return dims_->N; }
 
-}  // namespace control
+}  // namespace fsc::control

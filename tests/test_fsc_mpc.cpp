@@ -12,7 +12,7 @@
 #include "fscore/simulation/dynamic_system_simulator.hpp"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mpcpp/acados_mpc.hpp"
+#include "fsc_mpc/mpc_interface.hpp"
 
 #define RAPIDJSON_NOEXCEPT_ASSERT(cond) \
   do {                                  \
@@ -97,11 +97,12 @@ std::unordered_map<std::string, Eigen::MatrixXd> ReadMatrixFromJson(
   return res;
 }
 
-class TestAcadosMPC : public ::testing::Test {
+class TestMPCInterface : public ::testing::Test {
  public:
   using MdlType = fsc::SimpleQuadrotor<double, fsc::conventions::Robotics>;
   using SimType = fsc::DynamicSystemSimulator<MdlType, fsc::ODE4>;
-  TestAcadosMPC() = default;
+  using MPCInterface = fsc::control::MPCInterface;
+  TestMPCInterface() = default;
 
   void SetUp() override;
 
@@ -115,7 +116,7 @@ class TestAcadosMPC : public ::testing::Test {
   Eigen::MatrixXd expected_states;
   Eigen::MatrixXd expected_inputs;
 
-  control::AcadosMPC mpc;
+  MPCInterface mpc;
 
  private:
   std::unique_ptr<SimType> sim_;
@@ -123,7 +124,7 @@ class TestAcadosMPC : public ::testing::Test {
   double sim_period_{-1};
 };
 
-void TestAcadosMPC::SetUp() {
+void TestMPCInterface::SetUp() {
   std::ifstream fp(TEST_DATA_FILE);
 
   ASSERT_TRUE(fp.is_open());
@@ -155,10 +156,10 @@ void TestAcadosMPC::SetUp() {
     ASSERT_TRUE(
         fsc::IsClose(states.template segment<4>(3).norm(), 1.0, {1e-4, 1.0}));
   });
-  mpc.setConstantParameters(control::AcadosMPC::ParamType{mass});
+  mpc.setConstantParameters(MPCInterface::ParamType{mass});
 }
 
-void TestAcadosMPC::RunSimulation() {
+void TestMPCInterface::RunSimulation() {
   const auto& full_state_ref = trajectory["states"];
   auto state_ref_sz = full_state_ref.cols();
 
@@ -170,17 +171,16 @@ void TestAcadosMPC::RunSimulation() {
     actual_states.col(i) = sim_->state();
     auto n_state_ref =
         i + n_mpc_nodes + 1 > state_ref_sz ? state_ref_sz - i : n_mpc_nodes + 1;
-    const control::AcadosMPC::StateTrajectoryType state_ref =
+    const MPCInterface::StateTrajectoryType state_ref =
         full_state_ref.middleCols(i, n_state_ref);
 
     auto n_input_ref =
         i + n_mpc_nodes > input_ref_sz ? input_ref_sz - i : n_mpc_nodes;
-    const control::AcadosMPC::InputTrajectoryType input_ref =
+    const MPCInterface::InputTrajectoryType input_ref =
         full_input_ref.middleCols(i, n_input_ref);
 
     mpc.setReferenceTrajectory(state_ref, input_ref);
-    const control::AcadosMPC::InputType u_setpoint =
-        mpc.optimize(sim_->state());
+    const MPCInterface::InputType u_setpoint = mpc.optimize(sim_->state());
     double simulation_time = 0.0;
 
     actual_inputs.col(i) = u_setpoint;
@@ -192,18 +192,18 @@ void TestAcadosMPC::RunSimulation() {
   }
 }
 
-TEST_F(TestAcadosMPC, testBounding) {
+TEST_F(TestMPCInterface, testBounding) {
   const double neg_bound = -10.0;
   const double pos_bound = 10.0;
-  mpc.setBounds(control::AcadosMPC::BoundsType::Constant(neg_bound),
-                control::AcadosMPC::BoundsType::Constant(pos_bound));
+  mpc.setBounds(MPCInterface::BoundsType::Constant(neg_bound),
+                MPCInterface::BoundsType::Constant(pos_bound));
   RunSimulation();
   ASSERT_TRUE((actual_inputs.array() > (1.0 + 1e-5) * neg_bound).all())
       << actual_inputs.minCoeff();
   ASSERT_TRUE((actual_inputs.array() < (1.0 + 1e-5) * pos_bound).all());
 }
 
-TEST_F(TestAcadosMPC, testPosition) {
+TEST_F(TestMPCInterface, testPosition) {
   RunSimulation();
   const Eigen::MatrixXd expected_position = expected_states.topRows(3);
   const Eigen::MatrixXd actual_position = actual_states.topRows(3);
@@ -211,7 +211,7 @@ TEST_F(TestAcadosMPC, testPosition) {
                       100 * kRelativeTolerance, 1e-4);
 }
 
-TEST_F(TestAcadosMPC, testAttitude) {
+TEST_F(TestMPCInterface, testAttitude) {
   RunSimulation();
   for (int i = 0; i < expected_states.cols(); ++i) {
     const Eigen::Quaterniond expected_quat(
@@ -222,7 +222,7 @@ TEST_F(TestAcadosMPC, testAttitude) {
   }
 }
 
-TEST_F(TestAcadosMPC, testVelocity) {
+TEST_F(TestMPCInterface, testVelocity) {
   RunSimulation();
   const Eigen::MatrixXd expected_vel = expected_states.bottomRows(3);
   const Eigen::MatrixXd actual_vel = expected_states.bottomRows(3);

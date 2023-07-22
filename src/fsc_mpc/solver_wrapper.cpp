@@ -1,6 +1,6 @@
-#include "mpcpp/solver_wrapper.hpp"
+#include "fsc_mpc/solver_wrapper.hpp"
 
-namespace acadospp {
+namespace fsc::control {
 SolverCapsule* CreateCapsule() { return ACADOS_OBJ(acados_create_capsule)(); }
 
 int CreateSolver(SolverCapsule* capsule) {
@@ -55,4 +55,4 @@ void SetParameters(SolverCapsule* capsule, int stage, double* value) {
   ACADOS_OBJ(acados_update_params)
   (capsule, stage, value, static_cast<int>(Dimensions::kParamSize));
 }
-}  // namespace acadospp
+}  // namespace fsc::control

@@ -24,19 +24,19 @@ add_custom_target(
   COMMENT "Generating test data")
 
 # Step 2: Build the test
-add_executable(test_mpcpp test_mpcpp.cpp)
-add_dependencies(test_mpcpp generate_test_data)
-target_compile_definitions(test_mpcpp
+add_executable(test_fsc_mpc test_fsc_mpc.cpp)
+add_dependencies(test_fsc_mpc generate_test_data)
+target_compile_definitions(test_fsc_mpc
                            PRIVATE TEST_DATA_FILE="${TEST_DATA_FILE}")
-target_compile_features(test_mpcpp PRIVATE cxx_std_17)
+target_compile_features(test_fsc_mpc PRIVATE cxx_std_17)
 target_link_libraries(
-  test_mpcpp PRIVATE mpcpp::acados_mpc GTest::gtest GTest::gtest_main
-                     GTest::gmock fscore::fscore)
+  test_fsc_mpc PRIVATE fsc_mpc::mpc_interface GTest::gtest GTest::gtest_main
+                       GTest::gmock fscore::fscore)
 
-gtest_discover_tests(test_mpcpp)
+gtest_discover_tests(test_fsc_mpc)
 
 # Step 3: Build the benchmark
-add_executable(benchmark_mpcpp benchmark_mpcpp.cpp)
+add_executable(benchmark_fsc_mpc benchmark_fsc_mpc.cpp)
 target_link_libraries(
-  benchmark_mpcpp PRIVATE benchmark::benchmark benchmark::benchmark_main
-                          mpcpp::acados_mpc fscore::fscore)
+  benchmark_fsc_mpc PRIVATE benchmark::benchmark benchmark::benchmark_main
+                            fsc_mpc::mpc_interface fscore::fscore)

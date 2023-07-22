@@ -3,24 +3,24 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-#ifndef MPCPP_ACADOS_MPC_HPP_
-#define MPCPP_ACADOS_MPC_HPP_
+#ifndef FSC_MPC_MPC_INTERFACE_HPP_
+#define FSC_MPC_MPC_INTERFACE_HPP_
 
 #include <memory>
 #include <stdexcept>
 
 #include "Eigen/Core"
 #include "Eigen/Geometry"
-#include "mpcpp/internal.hpp"
-#include "mpcpp/solver_wrapper.hpp"
+#include "fsc_mpc/internal.hpp"
+#include "fsc_mpc/solver_wrapper.hpp"
 
-namespace control {
+namespace fsc::control {
 
 class AcadosWrapperException : public std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
-class AcadosMPC {
+class MPCInterface {
  public:
   enum {
     kStateSize = details::ToUnderlying(Dimensions::kStateSize),
@@ -85,16 +85,16 @@ class AcadosMPC {
 
   static const BoundsType kNoBounds;
 
-  AcadosMPC();
+  MPCInterface();
 
-  explicit AcadosMPC(InRef<Eigen::VectorXd> time_steps);
+  explicit MPCInterface(InRef<Eigen::VectorXd> time_steps);
 
   // Move ctors must be explicitly defaulted since we have a custom dtor
-  AcadosMPC(AcadosMPC &&other) noexcept;
+  MPCInterface(MPCInterface &&other) noexcept;
 
-  AcadosMPC &operator=(AcadosMPC &&other) noexcept;
+  MPCInterface &operator=(MPCInterface &&other) noexcept;
 
-  ~AcadosMPC();
+  ~MPCInterface();
 
   /**
    * @brief Resets the acados solver
@@ -277,10 +277,9 @@ class AcadosMPC {
   int num_mpc_nodes() const;
 
  private:
-  using Capsule =
-      details::Handle<acadospp::SolverCapsule, acadospp::FreeCapsule>;
+  using Capsule = details::Handle<SolverCapsule, FreeCapsule>;
 
-  inline acadospp::SolverCapsule *capsule() { return capsule_.get(); }
+  inline SolverCapsule *capsule() { return capsule_.get(); }
 
   void init();
 
@@ -300,5 +299,5 @@ class AcadosMPC {
   ocp_nlp_opts *opts_{nullptr};
 };
 
-}  // namespace control
-#endif  // MPCPP_ACADOS_MPC_HPP_
+}  // namespace fsc::control
+#endif  // FSC_MPC_MPC_INTERFACE_HPP_

@@ -3,12 +3,12 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-#ifndef MPCPP_SOLVER_WRAPPER_HPP_
-#define MPCPP_SOLVER_WRAPPER_HPP_
+#ifndef FSC_MPC_SOLVER_WRAPPER_HPP_
+#define FSC_MPC_SOLVER_WRAPPER_HPP_
 
 #include "acados/ocp_nlp/ocp_nlp_common.h"
 #include "acados_c/ocp_nlp_interface.h"
-#include "mpcpp/internal.hpp"
+#include "fsc_mpc/internal.hpp"
 
 #ifndef MODEL_NAME_UPPER
 #error MISSING DEFINITION FOR MODEL_NAME_UPPER
@@ -26,6 +26,8 @@
 
 #define ACADOS_OBJ(func) CAT(CAT(MODEL_NAME_LOWER, _), func)
 
+namespace fsc::control {
+
 enum class Dimensions {
   kStateSize = ACADOS_PARAM(NX),
   kInputSize = ACADOS_PARAM(NU),
@@ -37,7 +39,6 @@ enum class Dimensions {
   kParamSize = ACADOS_PARAM(NP)
 };
 
-namespace acadospp {
 using SolverCapsule = ACADOS_OBJ(solver_capsule);
 
 SolverCapsule* CreateCapsule();
@@ -68,6 +69,6 @@ ocp_nlp_opts* GetOpts(SolverCapsule* capsule);
 int Solve(SolverCapsule* capsule);
 
 void SetParameters(SolverCapsule* capsule, int stage, double* value);
-}  // namespace acadospp
+}  // namespace fsc::control
 
-#endif  // MPCPP_SOLVER_WRAPPER_HPP_
+#endif  // FSC_MPC_SOLVER_WRAPPER_HPP_

@@ -1,5 +1,5 @@
-#ifndef MPCPP_INTERNAL_HPP_
-#define MPCPP_INTERNAL_HPP_
+#ifndef FSC_MPC_INTERNAL_HPP_
+#define FSC_MPC_INTERNAL_HPP_
 
 #include <memory>
 #include <type_traits>
@@ -10,8 +10,7 @@
 #define STRINGIFY_IMPL(A) #A
 #define STRINGIFY(A) STRINGIFY_IMPL(A)
 
-namespace control {
-namespace details {
+namespace fsc::details {
 template <typename T>
 constexpr auto MutData(const T &obj) -> std::add_pointer_t<
     std::remove_const_t<std::remove_pointer_t<decltype(obj.data())>>> {
@@ -33,7 +32,6 @@ struct DeleterWrapper {
 template <typename T, int (*D)(T *)>
 using Handle = std::unique_ptr<T, DeleterWrapper<T, D>>;
 
-}  // namespace details
-}  // namespace control
+}  // namespace fsc::details
 
-#endif  // MPCPP_INTERNAL_HPP_
+#endif  // FSC_MPC_INTERNAL_HPP_

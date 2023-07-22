@@ -2,7 +2,7 @@
 #include <random>
 
 #include "benchmark/benchmark.h"
-#include "mpcpp/acados_mpc.hpp"
+#include "fsc_mpc/mpc_interface.hpp"
 
 static std::random_device dev;
 static std::mt19937 rng{dev()};
@@ -12,21 +12,22 @@ auto sample = [dist{std::uniform_real_distribution<>{0.0, 10.0}}]() mutable {
 };
 
 static void BenchmarkMPC(benchmark::State& state) {
+  using fsc::control::MPCInterface;
   const long int n_steps = state.range(0);
   const Eigen::VectorXd time_steps =
       Eigen::VectorXd::Constant(n_steps, 1.0 / static_cast<double>(n_steps));
-  control::AcadosMPC mpc(time_steps);
+  MPCInterface mpc(time_steps);
 
-  mpc.setConstantParameters(control::AcadosMPC::ParamType{1.0});
+  mpc.setConstantParameters(MPCInterface::ParamType{1.0});
 
-  control::AcadosMPC::StateType state_ref;
+  MPCInterface::StateType state_ref;
   state_ref << 10, 0, 0, Eigen::Quaterniond::Identity().coeffs(),
       Eigen::Vector3d::Zero();
 
-  control::AcadosMPC::InputType input_ref{9.81, 0, 0, 0};
+  MPCInterface::InputType input_ref{9.81, 0, 0, 0};
   mpc.setReferenceState(state_ref, input_ref);
 
-  control::AcadosMPC::StateType x_op;
+  MPCInterface::StateType x_op;
 
   Eigen::Ref<Eigen::Vector3d> position(x_op.head<3>());
   position.setZero();
@@ -41,7 +42,7 @@ static void BenchmarkMPC(benchmark::State& state) {
 
     state.ResumeTiming();
 
-    control::AcadosMPC::InputType input = mpc.optimize(x_op);
+    MPCInterface::InputType input = mpc.optimize(x_op);
     benchmark::DoNotOptimize(input);
   }
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14.0)
-project(mpcpp VERSION 0.0.1)
+project(fsc_mpc VERSION 0.0.1)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_FortranLibs ON)
 find_package(OpenMP REQUIRED)
@@ -32,25 +32,29 @@ add_custom_target(
   COMMENT "Generating Acados solver library")
 
 # Step 2: Compile the generated source AND the cpp API wrapper
-add_library(mpcpp_solver ${CODEGEN_FILES} src/mpcpp/solver_wrapper.cpp)
-add_dependencies(mpcpp_solver acados_python_codegen)
+add_library(fsc_mpc_solver ${CODEGEN_FILES} src/fsc_mpc/solver_wrapper.cpp)
+add_dependencies(fsc_mpc_solver acados_python_codegen)
+target_compile_features(fsc_mpc_solver PUBLIC cxx_std_17)
 target_compile_definitions(
-  mpcpp_solver PUBLIC "MODEL_NAME_LOWER=${MODEL_NAME_LOWER}"
-                      "MODEL_NAME_UPPER=${MODEL_NAME_UPPER}")
+  fsc_mpc_solver PUBLIC "MODEL_NAME_LOWER=${MODEL_NAME_LOWER}"
+                        "MODEL_NAME_UPPER=${MODEL_NAME_UPPER}")
 target_include_directories(
-  mpcpp_solver
+  fsc_mpc_solver
   PUBLIC "$<BUILD_INTERFACE:${CODEGEN_DIR};${PROJECT_SOURCE_DIR}/include>")
-target_link_libraries(mpcpp_solver PUBLIC acados blasfeo hpipm)
-add_library(mpcpp::solver ALIAS mpcpp_solver)
-set_property(TARGET mpcpp_solver PROPERTY EXPORT_NAME solver)
+target_link_libraries(fsc_mpc_solver PUBLIC acados blasfeo hpipm)
+add_library(fsc_mpc::solver ALIAS fsc_mpc_solver)
+set_property(TARGET fsc_mpc_solver PROPERTY EXPORT_NAME solver)
 
 # Step 3: Compile the OOPified MPC solver
-add_library(mpcpp_acados_mpc src/mpcpp/acados_mpc.cpp)
+add_library(fsc_mpc_mpc_interface src/fsc_mpc/mpc_interface.cpp)
 target_include_directories(
-  mpcpp_acados_mpc PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>")
-target_link_libraries(mpcpp_acados_mpc PUBLIC mpcpp::solver Eigen3::Eigen)
-set_property(TARGET mpcpp_acados_mpc PROPERTY EXPORT_NAME acados_mpc)
-add_library(mpcpp::acados_mpc ALIAS mpcpp_acados_mpc)
+  fsc_mpc_mpc_interface
+  PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>")
+target_compile_features(fsc_mpc_mpc_interface PUBLIC cxx_std_17)
+target_link_libraries(fsc_mpc_mpc_interface PUBLIC fsc_mpc::solver
+                                                   Eigen3::Eigen)
+set_property(TARGET fsc_mpc_mpc_interface PROPERTY EXPORT_NAME mpc_interface)
+add_library(fsc_mpc::mpc_interface ALIAS fsc_mpc_mpc_interface)
 
 include(CTest)
 if(BUILD_TESTING)
