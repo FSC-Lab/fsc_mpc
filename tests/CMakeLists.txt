@@ -22,6 +22,7 @@ add_custom_target(
   generate_test_data
   DEPENDS ${TEST_DATA_FILE}
   COMMENT "Generating test data")
+add_dependencies(generate_test_data acados_python_codegen)
 
 # Step 2: Build the test
 add_executable(test_fsc_mpc test_fsc_mpc.cpp)

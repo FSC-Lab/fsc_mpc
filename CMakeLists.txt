@@ -7,21 +7,35 @@ find_package(acados REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Python COMPONENTS Interpreter)
 
-set(CODEGEN_DIR ${CMAKE_SOURCE_DIR}/lib/${PROJECT_NAME})
+set(CODEGEN_DIR
+    ${CMAKE_SOURCE_DIR}/lib/${PROJECT_NAME}
+    CACHE PATH "Path to generated files")
 set(CODEGEN_FILES
     ${CODEGEN_DIR}/acados_solver_${PROJECT_NAME}.c
     ${CODEGEN_DIR}/${PROJECT_NAME}_model/${PROJECT_NAME}_expl_ode_fun.c
     ${CODEGEN_DIR}/${PROJECT_NAME}_model/${PROJECT_NAME}_expl_vde_adj.c
     ${CODEGEN_DIR}/${PROJECT_NAME}_model/${PROJECT_NAME}_expl_vde_forw.c)
 
-set(MODEL_NAME_LOWER ${PROJECT_NAME})
+set(MODEL_NAME_LOWER
+    ${PROJECT_NAME}
+    CACHE INTERNAL "")
 string(TOUPPER ${MODEL_NAME_LOWER} MODEL_NAME_UPPER)
+
+set(MPC_HORIZON
+    2.0
+    CACHE STRING "Prediction horizon of the MPC")
+
+set(MPC_NUM_NODES
+    20
+    CACHE STRING "Number of shooting nodes of the MPC")
 
 # Step 1: Generate the ACADOS solver using python
 add_custom_command(
   OUTPUT ${CODEGEN_FILES}
-  COMMAND PYTHONPATH=${CMAKE_SOURCE_DIR}/src ${Python_EXECUTABLE}
-          build_quadrotor_model.py ${CODEGEN_DIR} --name ${PROJECT_NAME}
+  COMMAND
+    PYTHONPATH=${CMAKE_SOURCE_DIR}/src ${Python_EXECUTABLE}
+    build_quadrotor_model.py ${CODEGEN_DIR} --name ${PROJECT_NAME} --horizon
+    ${MPC_HORIZON} --n_nodes ${MPC_NUM_NODES}
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/${PROJECT_NAME}"
   COMMENT "Generating Acados solver library"
   VERBATIM)
