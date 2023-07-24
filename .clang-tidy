@@ -58,7 +58,8 @@ Checks: >
   -modernize-use-trailing-return-type,
   -google-runtime-int,
   -readability-identifier-length,
-  -misc-non-private-member-variables-in-classes
+  -misc-non-private-member-variables-in-classes,
+  -bugprone-easily-swappable-parameters
 
 HeaderFilterRegex: ^${sourceDir}/include.*\.hpp$
 WarningsAsErrors: "*"

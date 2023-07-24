@@ -6,8 +6,8 @@
 import json
 from argparse import ArgumentParser
 
-import fscore.simulation as sim
 import numpy as np
+import simulation.simple_quadrotor_simulator as sim
 import trajectory_generator
 import utils
 
@@ -48,8 +48,6 @@ def main():
 
     params = {
         "quadrotor_mass": QUADROTOR_MASS,
-        "t_horizon": T_HORIZON,
-        "n_mpc_modes": N_MPC_NODES,
         "control_period": CONTROL_PERIOD,
         "sim_period": SIM_PERIOD,
     }

@@ -6,7 +6,7 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
-import fscore.simulation as sim
+import simulation.simple_quadrotor_simulator as sim
 import numpy as np
 import trajectory_generator
 import utils

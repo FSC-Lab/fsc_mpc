@@ -6,10 +6,6 @@ The code is abridged from [Data Driven MPC](https://github.com/uzh-rpg/data_driv
 
 ## Prerequisites
 
-### FSCore
-
-FSC Lab's core library. Not yet open-sourced. Ask H S Helson Go nicely (or bring him booze)
-
 ### CMake
 
 We use [CMake Presets](https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html) to drive CMake configuration. Therefore, CMake >3.19 is required. Install the latest cmake following [instructions here](https://askubuntu.com/questions/355565/how-do-i-install-the-latest-version-of-cmake-from-the-command-line)
@@ -40,6 +36,7 @@ CMake configuration/build/install options can be put into `CMakeUserPresets.json
   ]
 }
 ```
+remember to remove `//` comments in the example above, since CMake, unlike vscode, does not allow commented json
 
 ### Acados toolbox and Python interface
 
