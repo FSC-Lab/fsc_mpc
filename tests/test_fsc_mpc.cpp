@@ -164,7 +164,7 @@ void TestMPCInterface::SetUp() {
   ASSERT_NO_THROW(trajectory =
                       ReadMatrixFromJson(doc["trajectory"].GetObject()));
 
-  double mass;
+  double mass = 0.0;
   ASSERT_NO_THROW(mass = doc["params"]["quadrotor_mass"].GetDouble());
   ASSERT_NO_THROW(control_period_ =
                       doc["params"]["control_period"].GetDouble());
