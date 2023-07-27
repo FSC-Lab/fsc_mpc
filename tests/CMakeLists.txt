@@ -2,6 +2,7 @@ find_package(GTest REQUIRED)
 find_package(benchmark REQUIRED)
 find_package(Threads REQUIRED)
 find_package(RapidJSON REQUIRED)
+find_package(Python COMPONENTS Interpreter)
 
 include(GoogleTest)
 
@@ -12,7 +13,8 @@ add_custom_command(
   OUTPUT ${TEST_DATA_FILE}
   COMMAND
     PYTHONPATH=${CMAKE_SOURCE_DIR}/src:${CMAKE_SOURCE_DIR}/examples
-    ${Python_EXECUTABLE} generate_test_data.py ${TEST_DATA_FILE} ${CODEGEN_DIR}
+    ${Python_EXECUTABLE} generate_test_data.py ${TEST_DATA_FILE}
+    ${MPC_CODEGEN_DIR}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Generating test data"
   VERBATIM)
