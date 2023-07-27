@@ -5,7 +5,6 @@
 
 import pathlib
 
-import casadi as cs
 import numpy as np
 import scipy.linalg
 from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
@@ -17,11 +16,13 @@ class AcadosWrapperException(Exception):
     pass
 
 
-def make_quadrotor_model(model_name, mass=cs.MX.sym("mass")):
+def make_quadrotor_model(model_name):
+    import casadi as cs
+
     # Declare model variables
     x = cs.MX.sym("x", 10)  # type: ignore
     u = cs.MX.sym("u", 4)  # type: ignore
-
+    mass = cs.MX.sym("mass")
     model = symbolic_quadrotor.SymbolicQuadrotor(mass)
     f_expl = model.model_derivatives(x, u)
     x_dot = cs.MX.sym("x_dot", f_expl.shape)  # type: ignore
@@ -74,10 +75,9 @@ class AcadosWrapper:
 
             # Create OCP object to formulate the optimization
             ocp.model = model
-            self._nx = cs.MX(model.x).size(1)
-            self._nu = cs.MX(model.u).size(1)
-            if isinstance(model.p, cs.MX) and model.p.size(1):
-                ocp.parameter_values = np.zeros(model.p.size(1))
+            self._nx = model.x.size(1)
+            self._nu = model.u.size(1)
+            ocp.parameter_values = np.zeros(model.p.size(1))
             self._ny = self._nx + self._nu
 
             # Solver options

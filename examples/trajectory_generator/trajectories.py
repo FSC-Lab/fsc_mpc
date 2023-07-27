@@ -19,34 +19,30 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <http://www.gnu.org/licenses/>.
 
-from __future__ import annotations
-
-import dataclasses
-from typing import Union
+import copy
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-from numpy.typing import ArrayLike, NDArray
 from scipy.integrate import cumtrapz
 
 
-@dataclasses.dataclass
 class Trajectory:
-    states: NDArray[np.float64]
-    inputs: NDArray[np.float64]
-    time: NDArray[np.float64]
+    def __init__(self, states, inputs, time):
+        self.time = np.asarray(time)
+        self.states = np.asarray(states)
+        self.inputs = np.asarray(inputs)
 
     def __len__(self):
         return self.time.size
 
-    def __iadd__(self, other: Trajectory):
+    def __iadd__(self, other):
         self.states = np.concatenate((self.states, other.states))
         self.inputs = np.concatenate((self.inputs, other.inputs))
         self.time = np.concatenate((self.time, self.time[-1] + other.time))
         return self
 
-    def __add__(self, other: Trajectory) -> Trajectory:
-        res = dataclasses.replace(self)
+    def __add__(self, other):
+        res = copy.copy(self)
         res += other
         return res
 
@@ -54,9 +50,7 @@ class Trajectory:
     def time_interval(self):
         return np.diff(self.time)
 
-    def get_reference_chunk(
-        self, idx: int, n_nodes: int, reference_over_sampling: int = 1
-    ):
+    def get_reference_chunk(self, idx, n_nodes, reference_over_sampling=1):
         # Dense references
         ref_traj_chunk = self.states[
             :, idx : idx + (n_nodes + 1) * reference_over_sampling
@@ -87,10 +81,10 @@ def undo_quaternion_flip(q_past, q_current):
 
 
 def minimum_snap_trajectory_generator(
-    t_ref: ArrayLike,
-    traj_derivatives: ArrayLike,
-    yaw_derivatives: Union[ArrayLike, None] = None,
-    vehicle_mass: float = 1.0,
+    t_ref,
+    traj_derivatives,
+    yaw_derivatives=None,
+    vehicle_mass=1.0,
 ):
     """
     Follows the Minimum Snap Trajectory paper to generate a full trajectory given the position reference and its
