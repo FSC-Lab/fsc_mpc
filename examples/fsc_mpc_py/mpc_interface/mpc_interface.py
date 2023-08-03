@@ -1,47 +1,37 @@
-# Copyright (c) 2023 hs293go
-#
-# This software is released under the MIT License.
-# https://opensource.org/licenses/MIT
+"""
+Copyright © 2023 FSC Lab
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+"""
 
 import pathlib
 
 import numpy as np
 import scipy.linalg
-from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
-
-from .models import symbolic_quadrotor
+from acados_template import AcadosOcp, AcadosOcpSolver
 
 
-class AcadosWrapperException(Exception):
+class MPCInterfaceException(Exception):
     pass
 
 
-def make_quadrotor_model(model_name):
-    import casadi as cs
-
-    # Declare model variables
-    x = cs.MX.sym("x", 10)  # type: ignore
-    u = cs.MX.sym("u", 4)  # type: ignore
-    mass = cs.MX.sym("mass")
-    model = symbolic_quadrotor.SymbolicQuadrotor(mass)
-    f_expl = model.model_derivatives(x, u)
-    x_dot = cs.MX.sym("x_dot", f_expl.shape)  # type: ignore
-    f_impl = x_dot - f_expl
-
-    # Dynamics model
-    acados_model = AcadosModel()
-    acados_model.f_expl_expr = f_expl  # type: ignore
-    acados_model.f_impl_expr = f_impl
-    acados_model.x = x
-    acados_model.xdot = x_dot
-    acados_model.u = u
-    if isinstance(mass, cs.MX):
-        acados_model.p = mass  # type: ignore
-    acados_model.name = model_name  # type: ignore
-    return acados_model
-
-
-class AcadosWrapper:
+class MPCInterface:
     """
     A wrapper over AcadosOcpSolver that abstracts away some operations such as
     construction / restoring from file, setting references, and running optimization
@@ -49,88 +39,22 @@ class AcadosWrapper:
 
     def __init__(
         self,
-        model,
-        params,
         codegen_dst="lib",
-        clean_first=False,
     ):
         codegen_dst = pathlib.Path(codegen_dst)
 
         if codegen_dst.exists() and codegen_dst.is_file():
             raise FileExistsError("Codegen destination can not be an existing file")
 
-        if not codegen_dst.exists():
-            pathlib.Path.mkdir(codegen_dst, parents=True)
-
         json_file = codegen_dst / "acados_ocp_nlp.json"
 
         ocp = AcadosOcp()
-        if json_file.exists() and not clean_first:
-            build = False
-            generate = False
-        else:
-            build = True
-            generate = True
-            self._n_nodes = params["n_nodes"]
-
-            # Create OCP object to formulate the optimization
-            ocp.model = model
-            self._nx = model.x.size(1)
-            self._nu = model.u.size(1)
-            ocp.parameter_values = np.zeros(model.p.size(1))
-            self._ny = self._nx + self._nu
-
-            # Solver options
-            ocp.dims.N = params["n_nodes"]
-            ocp.solver_options.tf = params["t_horizon"]
-
-            ocp.cost.cost_type = "LINEAR_LS"
-            ocp.cost.cost_type_e = "LINEAR_LS"
-            q_cost, r_cost = np.asarray(params["q_cost"]), np.asarray(params["r_cost"])
-            if q_cost.size != self._nx:
-                raise AcadosWrapperException(
-                    f"Number of state weights does not match the state dimension {self._nx}"
-                )
-
-            if r_cost.size != self._nu:
-                raise AcadosWrapperException(
-                    f"Number of input weights does not match the input dimension {self._nu}"
-                )
-            ocp.cost.W = np.diag(np.r_[q_cost, r_cost])
-            ocp.cost.W_e = np.diag(q_cost)
-
-            ocp.cost.Vx = np.r_[np.eye(self._nx), np.zeros((self._nu, self._nx))]
-            ocp.cost.Vu = np.r_[np.zeros((self._nx, self._nu)), np.eye(self._nu)]
-            ocp.cost.Vx_e = np.eye(self._nx)
-            # Initial reference trajectory (will be overwritten)
-            ocp.cost.yref = np.concatenate(
-                (symbolic_quadrotor.DEFAULT_STATE, symbolic_quadrotor.DEFAULT_INPUT)
+        if not json_file.exists():
+            raise MPCInterfaceException(
+                "This wrapper requires a prebuilt acados solver"
             )
-            ocp.cost.yref_e = symbolic_quadrotor.DEFAULT_STATE
-
-            # Initial state (will be overwritten)
-            ocp.constraints.x0 = symbolic_quadrotor.DEFAULT_STATE
-
-            # Set constraints
-            high_bounds = np.full(self._nu, 1e10)
-            lbu = np.asarray(params.get("lbu", -high_bounds))
-            ubu = np.asarray(params.get("ubu", high_bounds))
-            if lbu.size != self._nu or ubu.size != self._nu:
-                raise AcadosWrapperException(
-                    "Number of input bounds does not match the input dimension 4"
-                )
-            ocp.constraints.lbu = lbu
-            ocp.constraints.ubu = ubu
-            ocp.constraints.idxbu = np.r_[0:4]
-            ocp.code_export_directory = str(codegen_dst)
-            try:
-                for k, v in params["solver_options"].items():
-                    if isinstance(v, str):
-                        v = v.upper()
-                    ocp.solver_options.set(k, v)
-            except KeyError:
-                pass
-
+        build = False
+        generate = False
         self._solver = AcadosOcpSolver(
             ocp, str(json_file), build=build, generate=generate
         )
@@ -201,7 +125,7 @@ class AcadosWrapper:
         n_x_samples = x_reference.shape[1]
         n_u_samples = u_reference.shape[1]
         if n_x_samples not in (n_u_samples + 1, n_u_samples):
-            raise AcadosWrapperException(
+            raise MPCInterfaceException(
                 f"Number of state ({n_x_samples}) and input ({n_u_samples}) references"
                 " do not match"
             )

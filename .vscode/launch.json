@@ -7,8 +7,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/examples/tracking_example.py",
       "args": [
-        "--codegen_dir",
-        "${workspaceFolder}/lib/example",
+        "${workspaceFolder}/model/fsc_mpc",
         "--trajectory",
         "lemniscate",
       ],

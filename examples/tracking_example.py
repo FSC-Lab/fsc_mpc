@@ -6,21 +6,17 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
-import simulation.simple_quadrotor_simulator as sim
+import fsc_mpc_py.simulation.simple_quadrotor_simulator as sim
 import numpy as np
-import trajectory_generator
-import utils
-
-import acados_wrapper
+from fsc_mpc_py import mpc_interface, trajectory_generator, utils
 
 
 def parse_cli():
     parser = ArgumentParser()
 
     parser.add_argument(
-        "--codegen_dir",
+        "codegen_dir",
         type=str,
-        default="../lib/example",
         help="Output directory for codegen",
     )
 
@@ -137,14 +133,12 @@ def main():
         "lbu": np.array([0.0, -8.0, -8.0, -8.0], dtype=np.float64),
         "ubu": np.array([80.0, 8.0, 8.0, 8.0], dtype=np.float64),
     }
-    solver = acados_wrapper.AcadosWrapper(
-        acados_wrapper.make_quadrotor_model("quadrotor"),
-        params,
+    solver = mpc_interface.MPCInterface(
         codegen_dst=str(codegen_dir),
-        clean_first=False,
     )
 
     solver.set_constant_parameter([QUADROTOR_MASS])
+    solver.set_costs(params["q_cost"], params["r_cost"])
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
     tout, yout = utils.run_simulation(

@@ -1,7 +1,7 @@
 {
     "acados_include_path": "/home/hs293go/src/acados/include",
     "acados_lib_path": "/home/hs293go/src/acados/lib",
-    "code_export_directory": "/home/hs293go/fsc_ws/src/fsc_mpc/lib/fsc_mpc",
+    "code_export_directory": "/home/hs293go/fsc_ws/src/fsc_mpc/model/fsc_mpc",
     "constraints": {
         "C": [],
         "C_e": [],
@@ -1428,7 +1428,7 @@
         "ny_e": 10,
         "nz": 0
     },
-    "json_file": "/home/hs293go/fsc_ws/src/fsc_mpc/lib/fsc_mpc/acados_ocp_nlp.json",
+    "json_file": "/home/hs293go/fsc_ws/src/fsc_mpc/model/fsc_mpc/acados_ocp_nlp.json",
     "model": {
         "con_h_expr": null,
         "con_h_expr_e": null,

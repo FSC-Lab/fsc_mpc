@@ -39,6 +39,10 @@ set(MPC_NUM_NODES
     20
     CACHE STRING "Number of shooting nodes of the MPC")
 
+set(MPC_MODEL
+    "fsc_mpc.model.quadrotor_model"
+    CACHE STRING "Python module containing definition of the NMPC solver")
+
 if(MPC_GENERATE_SOLVER)
   if(MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)
     message(
@@ -49,12 +53,15 @@ if(MPC_GENERATE_SOLVER)
 
   find_package(Python COMPONENTS Interpreter)
   # Step 1: Generate the ACADOS solver using python
+  set(PYTHONPATH_ARG
+      "$ENV{PYTHONPATH}:${CMAKE_SOURCE_DIR}:${CMAKE_SOURCE_DIR}/src")
+
   add_custom_command(
     OUTPUT ${CODEGEN_FILES}
     COMMAND
-      PYTHONPATH=${CMAKE_SOURCE_DIR}/src ${Python_EXECUTABLE}
-      build_quadrotor_model.py ${MPC_CODEGEN_DIR} --name ${PROJECT_NAME}
-      --horizon ${MPC_HORIZON} --n_nodes ${MPC_NUM_NODES}
+      PYTHONPATH=${PYTHONPATH_ARG} ${Python_EXECUTABLE} build_quadrotor_model.py
+      ${MPC_CODEGEN_DIR} --name ${PROJECT_NAME} --model ${MPC_MODEL} --horizon
+      ${MPC_HORIZON} --n_nodes ${MPC_NUM_NODES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/${PROJECT_NAME}"
     COMMENT "Generating Acados solver library"
     VERBATIM)
