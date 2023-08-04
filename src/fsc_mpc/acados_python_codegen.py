@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Python driver script to generate sources for a MPC solver using acados
 Copyright © 2023 FSC Lab
@@ -21,7 +22,6 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 """
-#!/usr/bin/env python3
 
 import argparse
 import importlib
@@ -47,12 +47,6 @@ def parse_cli():
     parser.add_argument(
         "--name", type=str, default="codegen_model", help="Name of the model"
     )
-    parser.add_argument(
-        "--horizon", type=float, default=1.0, help="Prediction horizon of the MPC"
-    )
-    parser.add_argument(
-        "--n_nodes", type=int, default=10, help="Number of shooting nodes of the MPC"
-    )
     return parser.parse_args()
 
 
@@ -65,16 +59,17 @@ def main():
         print(exc, file=sys.stderr)
         sys.exit(1)
 
-    try:
-        dims = mdl["DIMS"]
-        model = mdl["MODEL"]
-    except AttributeError:
-        print(
-            "Model definition does not contain required MODEL or MDL attribute. "
-            "Codegen failed",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    for it in ["DIMS", "MODEL", "MPC_HORIZON", "MPC_NUM_NODES"]:
+        if it not in mdl:
+            print(
+                f"Model definition does not contain required {it} attribute."
+                " Codegen Failed",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    dims = mdl["DIMS"]
+    model = mdl["MODEL"]
 
     for it in [
         "DEFAULT_STATE",
@@ -107,8 +102,8 @@ def main():
 
     ocp.parameter_values = np.asarray(mdl.get("DEFAULT_PARAM", np.empty(0)))
 
-    ocp.dims.N = args.n_nodes
-    ocp.solver_options.tf = args.horizon
+    ocp.dims.N = int(mdl["MPC_NUM_NODES"])
+    ocp.solver_options.tf = float(mdl["MPC_HORIZON"])
 
     ocp.cost.cost_type = mdl.get("COST_TYPE", "LINEAR_LS")
     ocp.cost.cost_type_e = mdl.get("COST_TYPE_E", ocp.cost.cost_type)
@@ -137,7 +132,7 @@ def main():
     ocp.constraints.ubu = np.asarray(default_ubu)
     ocp.constraints.idxbu = np.arange(0, dims["u"])
 
-    _ = acados_template.AcadosOcpSolver(ocp, str(json_file))
+    _ = acados_template.AcadosOcpSolver.generate(ocp, str(json_file))
 
 
 if __name__ == "__main__":

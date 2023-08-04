@@ -31,14 +31,6 @@ set(CODEGEN_FILES
     ${MPC_CODEGEN_DIR}/${MPC_MODEL_NAME}_model/${MPC_MODEL_NAME}_expl_vde_forw.c
     CACHE INTERNAL "")
 
-set(MPC_HORIZON
-    2.0
-    CACHE STRING "Prediction horizon of the MPC")
-
-set(MPC_NUM_NODES
-    20
-    CACHE STRING "Number of shooting nodes of the MPC")
-
 set(MPC_MODEL
     "fsc_mpc.model.quadrotor_model"
     CACHE STRING "Python module containing definition of the NMPC solver")
@@ -54,14 +46,14 @@ if(MPC_GENERATE_SOLVER)
   find_package(Python COMPONENTS Interpreter)
   # Step 1: Generate the ACADOS solver using python
   set(PYTHONPATH_ARG
-      "$ENV{PYTHONPATH}:${CMAKE_SOURCE_DIR}:${CMAKE_SOURCE_DIR}/src")
+      "$ENV{PYTHONPATH}:${CMAKE_SOURCE_DIR}:${CMAKE_SOURCE_DIR}/src"
+      CACHE INTERNAL "")
 
   add_custom_command(
     OUTPUT ${CODEGEN_FILES}
     COMMAND
-      PYTHONPATH=${PYTHONPATH_ARG} ${Python_EXECUTABLE} build_quadrotor_model.py
-      ${MPC_CODEGEN_DIR} --name ${MPC_MODEL_NAME} --model ${MPC_MODEL} --horizon
-      ${MPC_HORIZON} --n_nodes ${MPC_NUM_NODES}
+      PYTHONPATH=${PYTHONPATH_ARG} ${Python_EXECUTABLE} acados_python_codegen.py
+      ${MPC_CODEGEN_DIR} --name ${MPC_MODEL_NAME} --model ${MPC_MODEL}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/${PROJECT_NAME}"
     COMMENT "Generating Acados solver library"
     VERBATIM)
@@ -76,8 +68,7 @@ else()
     set_target_properties(
       acados_ocp_solver_${MPC_MODEL_NAME}
       PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${DEFAULT_CODEGEN_DIR}"
-                 LIBRARY_OUTPUT_DIRECTORY "${DEFAULT_CODEGEN_DIR}"
-                 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+                 LIBRARY_OUTPUT_DIRECTORY "${DEFAULT_CODEGEN_DIR}")
   else()
     foreach(file ${CODEGEN_FILES})
       if(NOT ${file})

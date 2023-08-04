@@ -75,6 +75,9 @@ def model_derivatives(syms):
     )
 
 
+MPC_HORIZON = 2.0
+MPC_NUM_NODES = 20
+
 DEFAULT_STATE = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
 DEFAULT_INPUT = [9.81, 0.0, 0.0, 0.0]
 DEFAULT_PARAM = [1]
