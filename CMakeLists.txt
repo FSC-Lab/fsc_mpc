@@ -60,14 +60,25 @@ if(MPC_GENERATE_SOLVER)
     OUTPUT ${CODEGEN_FILES}
     COMMAND
       PYTHONPATH=${PYTHONPATH_ARG} ${Python_EXECUTABLE} build_quadrotor_model.py
-      ${MPC_CODEGEN_DIR} --name ${PROJECT_NAME} --model ${MPC_MODEL} --horizon
+      ${MPC_CODEGEN_DIR} --name ${MPC_MODEL_NAME} --model ${MPC_MODEL} --horizon
       ${MPC_HORIZON} --n_nodes ${MPC_NUM_NODES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/${PROJECT_NAME}"
     COMMENT "Generating Acados solver library"
     VERBATIM)
 
 else()
-  if(NOT MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)
+  if(MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)
+    # Step 1: Compile the shared object that the Python interface will depend on
+    add_library(acados_ocp_solver_${MPC_MODEL_NAME} SHARED ${CODEGEN_FILES})
+    target_link_libraries(acados_ocp_solver_${MPC_MODEL_NAME}
+                          PUBLIC acados blasfeo hpipm)
+
+    set_target_properties(
+      acados_ocp_solver_${MPC_MODEL_NAME}
+      PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${DEFAULT_CODEGEN_DIR}"
+                 LIBRARY_OUTPUT_DIRECTORY "${DEFAULT_CODEGEN_DIR}"
+                 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+  else()
     foreach(file ${CODEGEN_FILES})
       if(NOT ${file})
         message(
