@@ -98,6 +98,82 @@ def undo_quaternion_flip(q_past, q_current):
     return q_current
 
 
+def forward(traj_refs, yaw_refs, vehicle_mass, grav=9.81, drag_params=None):
+    grav_vector = np.array([[0.0], [0.0], [grav]])
+    traj_refs = np.asarray(traj_refs, dtype=np.float64)
+    traj_refs = np.atleast_3d(traj_refs)
+
+    n_ders, n_dims, len_traj = traj_refs.shape
+    if (n_ders, n_dims) != (3, 3):
+        raise ValueError(
+            "Trajectory references must be 3D kinematical derivatives stacked"
+            "columnwise"
+        )
+
+    vel = np.atleast_2d(traj_refs[0, ...])
+    acc = np.atleast_2d(traj_refs[1, ...])
+    jer = np.atleast_2d(traj_refs[2, ...])
+
+    psi = yaw_refs[0, ...]
+    dpsi = yaw_refs[1, ...]
+
+    attitude = np.empty((4, len_traj), dtype=np.float64)
+    inputs = np.empty((4, len_traj), dtype=np.float64)
+    if drag_params is not None:
+        cp_term = np.sqrt(np.sum(vel * vel, axis=0) + drag_params["veps"])
+        w_term = 1.0 + drag_params["cp"] * cp_term
+        v_dot_a = np.sum(vel * acc, axis=0)
+        dw_term = drag_params["cp"] * v_dot_a / cp_term
+
+        dw = w_term * acc + dw_term * vel
+        w = w_term * vel
+        dh_over_m = drag_params["dh"] / vehicle_mass
+
+        z = acc + dh_over_m * w + grav_vector
+        z_nrm = np.linalg.norm(z, axis=0, keepdims=True)
+        z /= z_nrm
+
+        dz = -np.cross(z, np.cross(z, jer + dh_over_m * dw, axis=0), axis=0) / z_nrm
+        inputs[0, :] = np.sum(
+            z * (vehicle_mass * (acc + grav_vector) + drag_params["dv"] * w), axis=0
+        )
+    else:
+        z = acc + grav_vector
+        z_nrm = np.linalg.norm(z, axis=0, keepdims=True)
+        z /= z_nrm
+
+        dz = -np.cross(z, np.cross(z, jer, axis=0), axis=0) / z_nrm
+        inputs[0, :] = np.sum(z * (vehicle_mass * (acc + grav_vector)), axis=0)
+
+    tilt_den = np.sqrt(2.0 * (1.0 + z[2, :]))
+    tilt0 = 0.5 * tilt_den
+    tilt1 = -z[1, :] / tilt_den
+    tilt2 = z[0, :] / tilt_den
+    c_half_psi = np.cos(0.5 * psi)
+    s_half_psi = np.sin(0.5 * psi)
+    attitude[0, :] = tilt1 * c_half_psi + tilt2 * s_half_psi
+    attitude[1, :] = tilt2 * c_half_psi - tilt1 * s_half_psi
+    attitude[2, :] = tilt0 * s_half_psi
+    attitude[3, :] = tilt0 * c_half_psi
+    c_psi = np.cos(psi)
+    s_psi = np.sin(psi)
+    omg_den = z[2, :] + 1.0
+    omg_term = dz[2, :] / omg_den
+    inputs[1, :] = (
+        dz[0, :] * s_psi
+        - dz[1, :] * c_psi
+        - (z[0, :] * s_psi - z[1, :] * c_psi) * omg_term
+    )
+    inputs[2, :] = (
+        dz[0, :] * c_psi
+        + dz[1, :] * s_psi
+        - (z[0, :] * c_psi + z[1, :] * s_psi) * omg_term
+    )
+    inputs[3, :] = (z[1, :] * dz[0, :] - z[0, :] * dz[1, :]) / omg_den + dpsi
+
+    return np.squeeze(attitude), np.squeeze(inputs)
+
+
 def minimum_snap_trajectory_generator(
     t_ref,
     traj_derivatives,
@@ -132,9 +208,6 @@ def minimum_snap_trajectory_generator(
         vehicle.
     """
 
-    unit_z = np.array([[0], [0], [1]], dtype=np.float64)
-    gravity = 9.81
-
     traj_derivatives = np.asarray(traj_derivatives, dtype=np.float64)
 
     n_refs, n_x, len_traj = traj_derivatives.shape
@@ -150,96 +223,17 @@ def minimum_snap_trajectory_generator(
     if t_ref.size != len_traj:
         raise ValueError("Mismatch between trajectory length and time references")
 
-    full_pos, full_vel, full_acc, *full_jerk = map(
-        np.squeeze, np.split(traj_derivatives, n_refs, axis=0)
+    traj_ref = np.zeros((10, len_traj))
+    traj_ref[0:3, :] = np.squeeze(traj_derivatives[0, :, :])
+    traj_ref[7:10, :] = np.squeeze(traj_derivatives[1, :, :])
+    if yaw_derivatives is None:
+        yaw_derivatives = np.zeros((2, len_traj), dtype=np.float64)
+
+    traj_ref[3:7, :], u_ref = forward(
+        traj_derivatives[1:, :, :],
+        yaw_derivatives,
+        vehicle_mass,
     )
-
-    discretization_dt = np.gradient(t_ref)
-
-    # Add gravity to accelerations
-    full_acc += unit_z * gravity
-    # Compute body axes
-    z_b = full_acc / np.linalg.norm(full_acc, axis=0, keepdims=True)
-
-    rate = np.zeros((3, len_traj))
-    f_t = vehicle_mass * np.sum(z_b * full_acc, axis=0)
-
-    if yaw_derivatives is not None and n_refs == 4:
-        (full_jerk,) = full_jerk
-        yaw_derivatives = np.asarray(yaw_derivatives, dtype=np.float64)
-        # yaw is defined as the projection of the body-x axis on the horizontal plane
-        x_c = np.row_stack(
-            (
-                np.cos(yaw_derivatives[0, :]),
-                np.sin(yaw_derivatives[0, :]),
-                np.zeros(len_traj),
-            ),
-        )
-        y_b = np.cross(z_b, x_c, axis=0)
-        y_b = y_b / np.linalg.norm(y_b, axis=0, keepdims=True)
-        x_b = np.cross(y_b, z_b, axis=0)
-
-        # Rotation matrix (from body to world)
-        b_r_w = np.moveaxis(np.dstack((x_b, y_b, z_b)), 1, -1)
-        q = []
-        for i in range(len_traj):
-            # Transform to quaternion
-            q.append(R.from_matrix(b_r_w[:, :, i]).as_quat())
-            if i > 1:
-                q[-1] = undo_quaternion_flip(q[-2], q[-1])
-        q = np.column_stack(q)
-
-        # Compute angular rate vector
-        # Total thrust acceleration must be equal to the projection of the vehicle
-        # acceleration into the Z body axis
-        a_proj = np.sum(z_b * full_jerk, axis=0)
-
-        h_omega = vehicle_mass / f_t * (full_jerk - a_proj * z_b)
-        rate[0, :] = np.sum(-h_omega * y_b, axis=0)
-        rate[1, :] = np.sum(h_omega * x_b, axis=0)
-        rate[2, :] = -yaw_derivatives[1, :] * np.sum(unit_z * z_b, axis=0)
-
-    else:
-        # new way to compute attitude:
-        # https://math.stackexchange.com/questions/2251214/calculate-quaternions-from-two-directional-vectors
-        q_w = 1.0 + np.sum(unit_z * z_b, axis=0)
-        q_xyz = np.cross(unit_z, z_b, axis=0)
-        q = 0.5 * np.row_stack((q_xyz, q_w))
-        q = q / np.linalg.norm(q, axis=0, keepdims=True)
-
-        # Use numerical differentiation of quaternions
-        q_dot = np.gradient(q, t_ref, axis=1)
-        w_int = np.zeros((3, len_traj))
-        for i in range(len_traj):
-            q_i = R.from_quat(q[:, i])
-            w_int[:, i] = 2.0 * (q_i.inv() * R.from_quat(q_dot[:, i])).as_quat()[0:3]
-        rate[:] = w_int
-
-        q_new = np.array(q)
-        yaw_corr_acc = cumtrapz(-rate[2, :], discretization_dt, initial=0.0)
-        for i in range(1, len_traj):
-            q_corr = R.from_quat(
-                [0.0, 0.0, np.sin(yaw_corr_acc[i] / 2.0), np.cos(yaw_corr_acc[i] / 2.0)]
-            )
-            q_i = R.from_quat(q[:, i])
-            q_new[:, i] = (q_i * q_corr).as_quat()
-
-        q_new_dot = np.gradient(q_new, t_ref, axis=1)
-        for i in range(1, len_traj):
-            w_int[:, i] = (
-                2.0
-                * (
-                    R.from_quat(q_new[:, i]).inv() * R.from_quat(q_new_dot[:, i])
-                ).as_quat()[0:3]
-            )
-
-        q[:] = q_new
-        rate[:] = w_int
-
-    # Compute inputs
-    u_ref = np.row_stack((f_t, rate))
-
-    traj_ref = np.row_stack((full_pos, q, full_vel))
 
     return Trajectory(traj_ref, u_ref, t_ref)
 
@@ -535,7 +529,7 @@ def lemniscate_trajectory(
     z_dim = 0.0
 
     # Compute position, velocity, acceleration, jerk
-    traj = np.empty((3, 3, np.size(angle_vec)))
+    traj = np.zeros((4, 3, np.size(angle_vec)))
     traj[0, 0, :] = radius * np.cos(angle_vec)
     traj[0, 1, :] = radius * (np.sin(angle_vec) * np.cos(angle_vec))
     traj[0, 2, :] = -z_dim * np.cos(4.0 * angle_vec) + z
@@ -561,4 +555,4 @@ def lemniscate_trajectory(
         * (w_vec**2 * np.cos(4.0 * angle_vec) + alpha_vec * np.sin(4.0 * angle_vec))
     )
 
-    return minimum_snap_trajectory_generator(t_ref, traj, vehicle_mass)
+    return minimum_snap_trajectory_generator(t_ref, traj, vehicle_mass=vehicle_mass)
