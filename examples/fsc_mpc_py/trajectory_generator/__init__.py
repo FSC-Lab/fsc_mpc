@@ -1,7 +1,13 @@
 from fsc_mpc_py.trajectory_generator.trajectories import (
     Trajectory,
+    MultirotorTrajectory,
+    forward,
+    PiecewisePolynomialTrajectory,
+)
+
+from fsc_mpc_py.trajectory_generator.helpers import (
     lemniscate_trajectory,
     loop_trajectory,
-    forward,
-    straight_trajectory,
 )
+
+from fsc_mpc_py.trajectory_generator.minimum_snap import MinimumSnap

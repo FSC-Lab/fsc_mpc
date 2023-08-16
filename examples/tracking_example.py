@@ -1,7 +1,25 @@
-# Copyright (c) 2023 hs293go
-#
-# This software is released under the MIT License.
-# https://opensource.org/licenses/MIT
+"""
+Copyright © 2023 FSC Lab
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+"""
 
 from argparse import ArgumentParser
 from pathlib import Path
@@ -97,14 +115,12 @@ def main():
             vehicle_mass=QUADROTOR_MASS,
         )
     elif args.trajectory == "straight":
-        trajectory = trajectory_generator.straight_trajectory(
-            np.r_[0.0, 0.0, 1.0],
-            np.r_[150.0, 0.0, 1.0],
-            control_period,
-            lin_acc=args.acceleration,
-            v_max=args.max_speed,
-            vehicle_mass=QUADROTOR_MASS,
-        )
+        n_order = 5
+        generator = trajectory_generator.MinimumSnap(n_order, [0, 0, 1, 1])
+        traj = generator.generate([0, 0, 1], [150, 0, 1], [0, 10])
+        tt = np.arange(generator.t_ref[0], generator.t_ref[-1], control_period)
+
+        trajectory = traj.to_real_trajectory(QUADROTOR_MASS, tt)
 
     else:
         raise ValueError(
@@ -141,18 +157,16 @@ def main():
     solver.set_costs(params["q_cost"], params["r_cost"])
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
-    tout, yout = utils.run_simulation(
+    yout, solve_time = utils.run_simulation(
         model, solver, trajectory, reference_over_sampling, profile_data=True
     )
     tracking_rmse = np.mean(
-        np.sqrt(
-            np.sum((trajectory.states[0:3, :] - yout["states"][0:3, :]) ** 2, axis=1)
-        )
+        np.sqrt(np.sum((trajectory.position - yout.position) ** 2, axis=1))
     )
 
-    _ = utils.visualize_tracking_results(tout, yout, trajectory, autoshow=True)
+    _ = utils.visualize_tracking_results(yout.time, yout, trajectory, autoshow=True)
 
-    v_max_abs = np.max(np.sqrt(np.sum(trajectory.states[:, 7:10] ** 2, 1)))
+    v_max_abs = np.max(np.sqrt(np.sum(trajectory.velocity**2, 1)))
 
     print(
         "\nReference: Executed trajectory",
@@ -162,7 +176,7 @@ def main():
     )
 
     print(f"\n{'SIMULATION RESULTS'::^81s}\n")
-    mean_optimization_time = yout["solve_time"].mean()
+    mean_optimization_time = solve_time.mean()
     print(f"Mean optimization time: {mean_optimization_time:.3f} ms")
     print(f"Tracking RMSE: {tracking_rmse:.4f} m\n")
 

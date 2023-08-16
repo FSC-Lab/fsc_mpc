@@ -30,6 +30,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.transform import Rotation
 
 from .. import mpc_interface
+from fsc_mpc_py.trajectory_generator import MultirotorTrajectory
 
 
 def run_simulation(
@@ -53,8 +54,7 @@ def run_simulation(
     print("\nRunning simulation...")
     tout = []
     yout = {"states": [], "inputs": []}
-    if profile_data:
-        yout["solve_time"] = [0.0]
+    solve_time = [0.0]
     for current_idx in (
         tqdm.trange(len(trajectory)) if show_progress else range(len(trajectory))
     ):
@@ -80,8 +80,8 @@ def run_simulation(
         t1 = time.time()
         u_optimized, _ = solver.optimize(sim.state)
         if profile_data:
-            yout["solve_time"].append(time.time() - t1)
-        tout.append(t1)
+            solve_time.append(time.time() - t1)
+        tout.append(sim.time)
         # MPC applies only first optimized input to the plant
         u_setpoint = u_optimized[:, 0]
         yout["inputs"].append(u_setpoint)
@@ -98,8 +98,9 @@ def run_simulation(
 
     tout = np.asarray(tout)
     yout = {k: np.column_stack(v) for k, v in yout.items()}
+    yout = MultirotorTrajectory(yout["states"], yout["inputs"], tout)
 
-    return tout, yout
+    return yout, np.asarray(solve_time, dtype=np.float64) if profile_data else yout
 
 
 def visualize_tracking_results(
@@ -118,16 +119,14 @@ def visualize_tracking_results(
         f1 = handles[0]["fig"]
         ax = handles[0]["ax"]
 
-    expect_states = trajectory.states
-    result_states = yout["states"]
-    expect_position = expect_states[0:3, :]
-    result_position = result_states[0:3, :]
+    expect_position = trajectory.position
+    result_position = yout.position
 
-    expect_attitude = expect_states[3:7, :]
-    result_attitude = result_states[3:7, :]
+    expect_attitude = trajectory.attitude
+    result_attitude = yout.attitude
 
-    expect_velocity = expect_states[7:10, :]
-    result_velocity = result_states[7:10, :]
+    expect_velocity = trajectory.velocity
+    result_velocity = yout.velocity
 
     ax.plot(
         expect_position[0, :],
