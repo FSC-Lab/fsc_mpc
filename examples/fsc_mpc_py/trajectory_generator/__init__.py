@@ -10,4 +10,7 @@ from fsc_mpc_py.trajectory_generator.helpers import (
     loop_trajectory,
 )
 
-from fsc_mpc_py.trajectory_generator.minimum_snap import MinimumSnap
+from fsc_mpc_py.trajectory_generator.minimum_snap import (
+    MinimumSnap,
+    MinimumSnapAlgorithm,
+)

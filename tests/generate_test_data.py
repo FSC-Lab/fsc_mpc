@@ -101,12 +101,14 @@ def main():
     solver.set_constant_parameter([params["quadrotor_mass"]])
 
     # Simulation integration step (the smaller the more "continuous"-like simulation.
-    tout, yout = utils.run_simulation(
+    traj, _ = utils.run_simulation(
         model, solver, trajectory, REFERENCE_OVER_SAMPLING, show_progress=False
     )
 
-    save_data["sim_out"] = {"time": array2json(tout)}
-    save_data["sim_out"].update({k: array2json(v) for k, v in yout.items()})
+    traj = vars(traj)
+
+    save_data["sim_out"] = {"time": array2json(traj["time"])}
+    save_data["sim_out"].update({k: array2json(v) for k, v in traj.items()})
 
     with open(args.test_data_file, "w", encoding="utf-8") as fp:
         json.dump(save_data, fp)

@@ -116,7 +116,11 @@ def main():
         )
     elif args.trajectory == "straight":
         n_order = 5
-        generator = trajectory_generator.MinimumSnap(n_order, [0, 0, 1, 1])
+        generator = trajectory_generator.MinimumSnap(
+            n_order,
+            [0, 0, 1, 1],
+            algorithm=trajectory_generator.MinimumSnapAlgorithm.CLOSED_FORM,
+        )
         traj = generator.generate([0, 0, 1], [150, 0, 1], [0, 10])
         tt = np.arange(generator.t_ref[0], generator.t_ref[-1], control_period)
 
