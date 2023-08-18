@@ -55,7 +55,7 @@ class MinimumSnap:
             )
         self._deriv_wts = deriv_wts
         self._iszero_tol = 1e-8
-        self._points_order = 3
+        self._endpoint_order = 3
         self._t_ref = np.array([])
         self._pos_ref = np.array([])
         self._algorithm = algorithm
@@ -72,7 +72,7 @@ class MinimumSnap:
             raise ValueError("Time references are not yet initialized")
         return self._t_ref
 
-    def _process_points(self, pt: ArrayLike):
+    def _process_endpoints(self, pt: ArrayLike):
         pt = np.asarray(pt, dtype=np.float64)
         if pt.ndim == 1:
             pt = pt.reshape(-1, 1)
@@ -82,12 +82,12 @@ class MinimumSnap:
         elif self._dim != dim:
             raise ValueError("Mismatch in dimensions between points")
 
-        if n_order < self._points_order:
-            n_pad = self._points_order - n_order
+        if n_order < self._endpoint_order:
+            n_pad = self._endpoint_order - n_order
             pt = np.hstack([pt, np.zeros((self._dim, n_pad), dtype=np.float64)])
-        elif n_order > self._points_order:
+        elif n_order > self._endpoint_order:
             warnings.warn("Discarding derivatives with order > 3 at points")
-            pt = pt[:, 0 : self._points_order]
+            pt = pt[:, 0 : self._endpoint_order]
         return pt
 
     def _process_waypoints(self, waypoints, waypoint_time):
@@ -111,8 +111,8 @@ class MinimumSnap:
         waypoints: Union[ArrayLike, None] = None,
         waypoint_time: Union[ArrayLike, None] = None,
     ):
-        init_point = self._process_points(init_point)
-        final_point = self._process_points(final_point)
+        init_point = self._process_endpoints(init_point)
+        final_point = self._process_endpoints(final_point)
         self._pos_ref = np.column_stack([init_point[:, 0], final_point[:, 0]])
 
         t_span = np.asarray(t_span, dtype=np.float64).squeeze()
@@ -222,40 +222,15 @@ class MinimumSnap:
         beqs = {}
         polys = np.zeros((self._dim, self._n_cfs, self._n_poly))
         for d in range(self._dim):
-            Aeqs["boundary"] = np.zeros((6, self._n_vars))
-            beqs["boundary"] = np.zeros(6)
+            Aeqs["boundary"], beqs["boundary"] = self._compute_endpoint_constraints(
+                init_point[d, :], final_point[d, :]
+            )
 
-            for r in range(3):
-                Aeqs["boundary"][r, 0 : self._n_cfs] = self.compute_tvec(
-                    r, self._t_ref[0]
-                )
-                Aeqs["boundary"][r + 3, -self._n_cfs :] = self.compute_tvec(
-                    r, self._t_ref[-1]
-                )
-            beqs["boundary"] = np.concatenate([init_point[d, :], final_point[d, :]])
+            Aeqs["mid"], beqs["mid"] = self._compute_midpoint_constraints(
+                self._pos_ref[d, :]
+            )
 
-            Aeqs["mid"] = np.zeros((self._n_poly - 1, self._n_vars))
-            beqs["mid"] = np.zeros(self._n_poly - 1)
-            for i in range(1, self._n_poly):
-                it, sent = self._n_cfs * i, self._n_cfs * (1 + i)
-                Aeqs["mid"][i - 1, it:sent] = self.compute_tvec(0, self._t_ref[i])
-                beqs["mid"][i - 1] = self._pos_ref[d, i]
-
-            Aeqs["cont"] = np.zeros(((self._n_poly - 1) * 3, self._n_vars))
-            beqs["cont"] = np.zeros((self._n_poly - 1) * 3)
-            for i in range(self._n_poly - 1):
-                tvec_p = self.compute_tvec(0, self._t_ref[i + 1])
-                tvec_v = self.compute_tvec(1, self._t_ref[i + 1])
-                tvec_a = self.compute_tvec(2, self._t_ref[i + 1])
-                itx, sentx = 3 * i, 3 * (i + 1)
-                ity, senty = self._n_cfs * i, self._n_cfs * (i + 2)
-                Aeqs["cont"][itx:sentx, ity:senty] = np.block(
-                    [
-                        [tvec_p, -tvec_p],
-                        [tvec_v, -tvec_v],
-                        [tvec_a, -tvec_a],
-                    ]
-                )
+            Aeqs["cont"], beqs["cont"] = self._compute_continuity_constraints()
 
             Aeq = np.vstack([Aeqs["boundary"], Aeqs["mid"], Aeqs["cont"]])
             beq = np.concatenate([beqs["boundary"], beqs["mid"], beqs["cont"]])
@@ -270,6 +245,37 @@ class MinimumSnap:
             )
             polys[d, :, :] = np.reshape(soln.x, (self._n_cfs, self._n_poly), order="F")
         return PiecewisePolynomialTrajectory(self._t_ref, polys)
+
+    def _compute_continuity_constraints(self):
+        Aeqs = np.zeros(((self._n_poly - 1) * 3, self._n_vars))
+        beqs = np.zeros((self._n_poly - 1) * 3)
+        for i in range(self._n_poly - 1):
+            it, sent = self._n_cfs * i, self._n_cfs * (i + 2)
+            for r in range(self._endpoint_order):
+                tvec = self.compute_tvec(r, self._t_ref[i + 1])
+                Aeqs[3 * i + r, it:sent] = np.concatenate([tvec, -tvec])
+
+        return Aeqs, beqs
+
+    def _compute_midpoint_constraints(self, pos_ref):
+        Aeq = np.zeros((self._n_poly - 1, self._n_vars))
+        beq = np.zeros(self._n_poly - 1)
+        for i in range(1, self._n_poly):
+            it, sent = self._n_cfs * i, self._n_cfs * (1 + i)
+            Aeq[i - 1, it:sent] = self.compute_tvec(0, self._t_ref[i])
+            beq[i - 1] = pos_ref[i]
+        return Aeq, beq
+
+    def _compute_endpoint_constraints(self, init_point, final_point):
+        Aeq = np.zeros((2 * self._endpoint_order, self._n_vars))
+        beq = np.zeros(2 * self._endpoint_order)
+
+        for r in range(self._endpoint_order):
+            Aeq[r, 0 : self._n_cfs] = self.compute_tvec(r, self._t_ref[0])
+            Aeq[r + 3, -self._n_cfs :] = self.compute_tvec(r, self._t_ref[-1])
+        beq[0 : self._endpoint_order] = init_point
+        beq[self._endpoint_order :] = final_point
+        return Aeq, beq
 
     def compute_Q(self, r, tspan):
         t1, t2 = tspan

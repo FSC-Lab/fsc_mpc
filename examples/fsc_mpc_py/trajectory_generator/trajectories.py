@@ -145,7 +145,7 @@ class PiecewisePolynomialTrajectory:
         t_clamped = np.clip(t, self._t_ref[0], self._t_ref[-1])
         if t_clamped != t:
             warnings.warn("Query time is clamped within range of trajectory")
-        idx = min(np.flatnonzero(t >= self._t_ref)[-1], self._n_pieces)
+        idx = min(np.flatnonzero(t >= self._t_ref)[-1], self._n_pieces - 1)
         return idx
 
     def get_position(self, t_ref):
@@ -163,25 +163,13 @@ class PiecewisePolynomialTrajectory:
             raise ValueError("This method is only for 3D trajectories")
 
         t_ref = np.asarray(t_ref, dtype=np.float64)
-        traj_derivatives = np.zeros((4, self._dim, t_ref.size), dtype=np.float64)
+        len_traj = t_ref.size
+        traj_derivatives = np.zeros((4, self._dim, len_traj), dtype=np.float64)
         for k, t in enumerate(t_ref):
             idx = self.find_piece(t)
 
             for i in range(4):
                 traj_derivatives[i, :, k] = self._pieces[idx].get(t, i)
-
-        n_refs, n_x, len_traj = traj_derivatives.shape
-        if n_refs not in (3, 4):
-            raise ValueError(
-                "Expected 3 or 4 (position, velocity, acceleration[, jerk]) references"
-            )
-
-        if n_x != 3:
-            raise ValueError("Trajectory must be 3-dimensional")
-
-        t_ref = np.asarray(t_ref, dtype=np.float64)
-        if t_ref.size != len_traj:
-            raise ValueError("Mismatch between trajectory length and time references")
 
         traj_ref = np.zeros((10, len_traj))
         traj_ref[0:3, :] = np.squeeze(traj_derivatives[0, :, :])
