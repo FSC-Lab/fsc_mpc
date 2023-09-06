@@ -42,7 +42,7 @@ def parse_cli():
         "--trajectory",
         type=str,
         default="loop",
-        choices=["loop", "lemniscate", "straight"],
+        choices=["loop", "lemniscate", "arbitrary"],
         help="path to other necessary data files (eg. vocabularies)",
     )
 
@@ -114,15 +114,18 @@ def main():
             v_max=args.max_speed,
             vehicle_mass=QUADROTOR_MASS,
         )
-    elif args.trajectory == "straight":
+    elif args.trajectory == "arbitrary":
         n_order = 5
         generator = trajectory_generator.MinimumSnap(
             n_order,
             [0, 0, 1, 1],
             algorithm=trajectory_generator.MinimumSnapAlgorithm.CLOSED_FORM,
         )
-        traj = generator.generate([0, 0, 1], [150, 0, 1], [0, 10])
-        tt = np.arange(generator.t_ref[0], generator.t_ref[-1], control_period)
+        traj = generator.generate(
+            np.c_[[0, 0, 0], [2, -1, 2], [5, 3, 4], [7, -5, 5]],
+            [0, 2, 4, 7],
+        )
+        tt = np.arange(0, 7, control_period)
 
         trajectory = traj.to_real_trajectory(QUADROTOR_MASS, tt)
 

@@ -22,10 +22,13 @@ OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import enum
 import warnings
-from typing import Union
+from typing import Tuple, Union
 
 import numpy as np
-from fsc_mpc_py.trajectory_generator import PiecewisePolynomialTrajectory
+from fsc_mpc_py.trajectory_generator import (
+    PiecewisePolynomialTrajectory,
+    NormalizedTime,
+)
 from numpy.typing import ArrayLike
 from scipy import optimize
 
@@ -37,10 +40,7 @@ class MinimumSnapAlgorithm(enum.Enum):
 
 class MinimumSnap:
     def __init__(
-        self,
-        degree: int,
-        deriv_wts: ArrayLike,
-        algorithm=MinimumSnapAlgorithm.CLOSED_FORM,
+        self, degree, deriv_wts, algorithm=MinimumSnapAlgorithm.CLOSED_FORM
     ) -> None:
         self._degree = degree
         self._n_cfs = degree + 1
@@ -55,81 +55,61 @@ class MinimumSnap:
             )
         self._deriv_wts = deriv_wts
         self._iszero_tol = 1e-8
-        self._endpoint_order = 3
-        self._t_ref = np.array([])
-        self._pos_ref = np.array([])
+        self._r_cts = 3
+
         self._algorithm = algorithm
 
-    @property
-    def pos_ref(self):
-        if self._pos_ref.size == 0:
-            raise ValueError("Position references are not yet initialized")
-        return self._pos_ref
-
-    @property
-    def t_ref(self):
-        if self._t_ref.size == 0:
-            raise ValueError("Time references are not yet initialized")
-        return self._t_ref
-
-    def _process_endpoints(self, pt: ArrayLike):
-        pt = np.asarray(pt, dtype=np.float64)
-        if pt.ndim == 1:
-            pt = pt.reshape(-1, 1)
-        dim, n_order = pt.shape
+    def _process_refs(self, pos_ref, vel_ref, acc_ref):
+        pos_ref = np.asarray(pos_ref, dtype=np.float64)
+        dim, n_points = pos_ref.shape
         if self._dim < 0:
-            self._dim = pt.shape[0]
+            self._dim = pos_ref.shape[0]
         elif self._dim != dim:
             raise ValueError("Mismatch in dimensions between points")
 
-        if n_order < self._endpoint_order:
-            n_pad = self._endpoint_order - n_order
-            pt = np.hstack([pt, np.zeros((self._dim, n_pad), dtype=np.float64)])
-        elif n_order > self._endpoint_order:
-            warnings.warn("Discarding derivatives with order > 3 at points")
-            pt = pt[:, 0 : self._endpoint_order]
-        return pt
+        if n_points < 2:
+            raise ValueError("Too few waypoints")
 
-    def _process_waypoints(self, waypoints, waypoint_time):
-        waypoints = np.asarray(waypoints, dtype=np.float64)
-        n_dims_wp, n_waypoints = waypoints.shape
-        waypoint_time = np.asarray(waypoint_time, dtype=np.float64).squeeze()
-        if waypoint_time.ndim > 1 or waypoint_time.size != n_waypoints:
-            raise ValueError(
-                "Time references must be a 1D list as long as number of waypoints"
-            )
-        if n_dims_wp != self._dim:
-            raise ValueError("Mismatch in dimension between waypoints and points")
-        self._pos_ref = np.insert(self._pos_ref, [1], waypoints, axis=1)
-        self._t_ref = np.insert(self._t_ref, 1, waypoint_time)
+        return np.dstack(
+            [
+                pos_ref,
+                self._process_higher_order_refs(pos_ref.shape, vel_ref),
+                self._process_higher_order_refs(pos_ref.shape, acc_ref),
+            ],
+        )
 
-    def generate(
-        self,
-        init_point: ArrayLike,
-        final_point: ArrayLike,
-        t_span: ArrayLike,
-        waypoints: Union[ArrayLike, None] = None,
-        waypoint_time: Union[ArrayLike, None] = None,
-    ):
-        init_point = self._process_endpoints(init_point)
-        final_point = self._process_endpoints(final_point)
-        self._pos_ref = np.column_stack([init_point[:, 0], final_point[:, 0]])
+    def _process_higher_order_refs(self, shape, ref_tup):
+        refs = np.zeros(shape, dtype=np.float64)
+        if ref_tup is None:
+            refs[:, 1:-1] = np.nan
+        else:
+            val, ids = [np.asarray(it, dtype=np.float64) for it in ref_tup]
+            ids = ids.squeeze()
+            if ids.ndim != 1:
+                raise ValueError("Index of references must be 1D")
 
-        t_span = np.asarray(t_span, dtype=np.float64).squeeze()
-        if t_span.size != 2:
-            raise ValueError(
-                "Timespan must be two values corresponding to initial and final points"
-            )
-        self._t_ref = np.array(t_span)
+            n_refs = ids.size
+            if n_refs != val.shape[1]:
+                raise ValueError("Mismatch between number of references and indices")
 
-        if waypoints is not None and waypoint_time is not None:
-            self._process_waypoints(waypoints, waypoint_time)
-        elif not (waypoints is None and waypoint_time is None):
-            raise ValueError(
-                "Waypoints and times for waypoint traversal must be given together"
-            )
+            if n_refs > shape[1]:
+                raise ValueError("Too many references")
 
-        self._n_poly = self._pos_ref.shape[1] - 1
+            if np.any(ids >= val.shape[1]):
+                raise ValueError(
+                    "Index of references exceeded number of position references"
+                )
+            refs[:, ids] = val
+        return refs
+
+    def generate(self, pos_ref, t_ref, vel_refs=None, acc_refs=None):
+        refs = self._process_refs(pos_ref, vel_refs, acc_refs)
+
+        t_ref = np.asarray(t_ref, dtype=np.float64).squeeze()
+
+        self._n_poly = refs.shape[1] - 1
+        t_ref = NormalizedTime(t_ref)
+
         self._n_vars = self._n_poly * self._n_cfs
 
         n_derivs = self._deriv_wts.size
@@ -143,56 +123,47 @@ class MinimumSnap:
                 continue
             for i in range(self._n_poly):
                 it, sent = i * self._n_cfs, (i + 1) * self._n_cfs
-                q = self.compute_Q(r, self._t_ref[i : i + 2])
-                Q_all[r, it:sent, it:sent] = q
+                Q_all[r, it:sent, it:sent] = self.compute_Q(r, t_ref.durations[i])
+
         Q_all = np.sum(self._deriv_wts[:, None, None] * Q_all, axis=0).squeeze()
 
         return (
-            self._solve_constr(init_point, final_point, Q_all)
+            self._solve_constr(refs, t_ref, Q_all)
             if self._algorithm is MinimumSnapAlgorithm.CONSTRAINED
-            else self._solve_unconstr(init_point, final_point, Q_all)
+            else self._solve_unconstr(refs, t_ref, Q_all)
         )
 
-    def _solve_unconstr(self, init_point, final_point, Q_all):
+    def _solve_unconstr(self, refs, t_ref, Q_all):
         polys = np.zeros((self._dim, self._n_cfs, self._n_poly))
-        tk = self._t_ref[:, None] ** np.arange(0, self._n_cfs)
         for d in range(self._dim):
             # compute Tk   Tk(i,j) = ts(i)^(j-1)
 
-            # compute A (n_cont*2*self._n_poly) * (self._n_cfs*self._n_poly)
-            n_cont = 3
+            # compute A (self._cont_order*2*self._n_poly) * (self._n_cfs*self._n_poly)
             # 1:p  2:pv  3:pva  4:pvaj  5:pvajs
-            A = np.zeros((n_cont * 2 * self._n_poly, self._n_cfs * self._n_poly))
+            A = np.zeros((self._r_cts * 2 * self._n_poly, self._n_cfs * self._n_poly))
             for i in range(self._n_poly):
-                for j in range(n_cont):
-                    for k in range(j, self._n_cfs):
-                        if k == j:
-                            t1 = 1
-                            t2 = 1
-                        else:  # k>j
-                            t1 = tk[i, k - j]
-                            t2 = tk[i + 1, k - j]
-                        A[n_cont * 2 * i + j, self._n_cfs * i + k] = (
-                            np.prod(np.arange(k - j + 1, k + 1)) * t1
-                        )
-                        A[n_cont * 2 * i + n_cont + j, self._n_cfs * i + k] = (
-                            np.prod(np.arange(k - j + 1, k + 1)) * t2
-                        )
+                it, sent = self._n_cfs * i, self._n_cfs * (i + 1)
+                for r in range(self._r_cts):
+                    A[self._r_cts * 2 * i + r, it:sent] = (
+                        self.compute_tvec(r, 0) / t_ref.durations[i] ** r
+                    )
+                    A[self._r_cts * (2 * i + 1) + r, it:sent] = (
+                        self.compute_tvec(r, 1) / t_ref.durations[i] ** r
+                    )
 
             # compute M
-            M = np.zeros((self._n_poly * 2 * n_cont, n_cont * (self._n_poly + 1)))
-            for i in range(self._n_poly * 2):
-                j = np.floor((i + 1) / 2).astype(np.int64)
-                rbeg = n_cont * i
-                cbeg = n_cont * j
-                M[rbeg : rbeg + n_cont, cbeg : cbeg + n_cont] = np.eye(n_cont)
+            M = np.zeros(
+                (self._n_poly * 2 * self._r_cts, self._r_cts * (self._n_poly + 1))
+            )
+            for i in range(self._n_poly):
+                it, sent = 2 * self._r_cts * i, 2 * self._r_cts * (i + 1)
+                it2, sent2 = self._r_cts * i, self._r_cts * (i + 2)
+                M[it:sent, it2:sent2] = np.eye(2 * self._r_cts)
 
             # compute C
-            num_d = n_cont * (self._n_poly + 1)
+            num_d = self._r_cts * (self._n_poly + 1)
             C = np.eye(num_d)
-            df = np.concatenate(
-                [self._pos_ref[d, :], init_point[d, 1:], final_point[d, 1:]]
-            )
+            df = np.concatenate([refs[d, :, 0], refs[d, 0, 1:], refs[d, -1, 1:]])
             # fix all pos(self._n_poly+1) + start va(2) +  va(2)
             fix_idx = np.concatenate(
                 [np.arange(0, num_d, 3), [1, 2, num_d - 2, num_d - 1]]
@@ -211,29 +182,24 @@ class MinimumSnap:
 
             dp = -np.linalg.solve(Rpp, Rfp.T @ df)
 
-            p = AiMC @ np.concatenate([df, dp])
+            p = np.reshape(
+                AiMC @ np.concatenate([df, dp]), (self._n_cfs, self._n_poly), order="F"
+            )
+            polys[d, :, :] = (1.0 / t_ref.durations[None]) ** np.arange(0, self._n_cfs)[
+                ..., None
+            ] * p
 
-            polys[d, :, :] = np.reshape(p, (self._n_cfs, self._n_poly), order="F")
+        return PiecewisePolynomialTrajectory(t_ref, polys)
 
-        return PiecewisePolynomialTrajectory(self._t_ref, polys)
-
-    def _solve_constr(self, init_point, final_point, Q_all):
-        Aeqs = {}
-        beqs = {}
+    def _solve_constr(self, refs, t_ref, Q_all):
         polys = np.zeros((self._dim, self._n_cfs, self._n_poly))
         for d in range(self._dim):
-            Aeqs["boundary"], beqs["boundary"] = self._compute_endpoint_constraints(
-                init_point[d, :], final_point[d, :]
-            )
+            Aeq_0, beq_0 = self._compute_dynamical_constraints(refs[d, :], t_ref)
+            Aeq_1, beq_1 = self._compute_continuity_constraints(t_ref)
 
-            Aeqs["mid"], beqs["mid"] = self._compute_midpoint_constraints(
-                self._pos_ref[d, :]
-            )
+            Aeq = np.vstack([Aeq_0, Aeq_1])
+            beq = np.concatenate([beq_0, beq_1])
 
-            Aeqs["cont"], beqs["cont"] = self._compute_continuity_constraints()
-
-            Aeq = np.vstack([Aeqs["boundary"], Aeqs["mid"], Aeqs["cont"]])
-            beq = np.concatenate([beqs["boundary"], beqs["mid"], beqs["cont"]])
             constr = optimize.LinearConstraint(Aeq, beq, beq)  # type: ignore
             soln = optimize.minimize(
                 lambda x: (x @ Q_all @ x) / 2,
@@ -243,61 +209,57 @@ class MinimumSnap:
                 jac=lambda x: Q_all @ x,
                 hess=lambda _: Q_all,
             )
-            polys[d, :, :] = np.reshape(soln.x, (self._n_cfs, self._n_poly), order="F")
-        return PiecewisePolynomialTrajectory(self._t_ref, polys)
+            P = np.reshape(soln.x, (self._n_cfs, self._n_poly), order="F")
+            polys[d, :, :] = (1.0 / t_ref.durations[None]) ** np.arange(0, self._n_cfs)[
+                ..., None
+            ] * P
+        return PiecewisePolynomialTrajectory(t_ref, polys)
 
-    def _compute_continuity_constraints(self):
+    def _compute_continuity_constraints(self, t_ref):
         Aeqs = np.zeros(((self._n_poly - 1) * 3, self._n_vars))
         beqs = np.zeros((self._n_poly - 1) * 3)
         for i in range(self._n_poly - 1):
             it, sent = self._n_cfs * i, self._n_cfs * (i + 2)
-            for r in range(self._endpoint_order):
-                tvec = self.compute_tvec(r, self._t_ref[i + 1])
-                Aeqs[3 * i + r, it:sent] = np.concatenate([tvec, -tvec])
+            for r in range(self._r_cts):
+                tvec_l = self.compute_tvec(r, 1) / t_ref.durations[i] ** r
+                tvec_r = self.compute_tvec(r, 0) / t_ref.durations[i + 1] ** r
+                Aeqs[3 * i + r, it:sent] = np.concatenate([tvec_l, -tvec_r])
 
         return Aeqs, beqs
 
-    def _compute_midpoint_constraints(self, pos_ref):
-        Aeq = np.zeros((self._n_poly - 1, self._n_vars))
-        beq = np.zeros(self._n_poly - 1)
-        for i in range(1, self._n_poly):
-            it, sent = self._n_cfs * i, self._n_cfs * (1 + i)
-            Aeq[i - 1, it:sent] = self.compute_tvec(0, self._t_ref[i])
-            beq[i - 1] = pos_ref[i]
+    def _compute_dynamical_constraints(self, refs, t_ref):
+        n_constrain_orders = np.count_nonzero(~np.isnan(refs), axis=1)
+        Aeq = np.zeros((n_constrain_orders.sum(), self._n_vars))
+        beq = np.zeros(n_constrain_orders.sum())
+
+        row_its = np.concatenate([[0], n_constrain_orders.cumsum()])
+        for i in range(self._n_poly + 1):
+            idx, tau = t_ref.find_piece(t_ref[i])
+            it, sent = self._n_cfs * idx, self._n_cfs * (1 + idx)
+            for r in range(n_constrain_orders[i]):
+                Aeq[row_its[i] + r, it:sent] = (
+                    self.compute_tvec(r, tau) / t_ref.durations[idx] ** r
+                )
+                beq[row_its[i] + r] = refs[i, r]
         return Aeq, beq
 
-    def _compute_endpoint_constraints(self, init_point, final_point):
-        Aeq = np.zeros((2 * self._endpoint_order, self._n_vars))
-        beq = np.zeros(2 * self._endpoint_order)
+    def compute_Q(self, r, tau):
+        Q = np.zeros((self._n_cfs, self._n_cfs))
 
-        for r in range(self._endpoint_order):
-            Aeq[r, 0 : self._n_cfs] = self.compute_tvec(r, self._t_ref[0])
-            Aeq[r + 3, -self._n_cfs :] = self.compute_tvec(r, self._t_ref[-1])
-        beq[0 : self._endpoint_order] = init_point
-        beq[self._endpoint_order :] = final_point
-        return Aeq, beq
-
-    def compute_Q(self, r, tspan):
-        t1, t2 = tspan
-        if t1 > t2:
-            raise ValueError("Start time must be earlier than  time")
-        Q = np.zeros((self._degree + 1, self._degree + 1))
-
-        i = np.arange(r, self._degree + 1, dtype=np.int32)[None, :]
+        i = np.arange(r, self._n_cfs, dtype=np.int32)[None, :]
         l = i.T
         m_seq = np.arange(0, r)[None, None, :]
-        k = i + l - 2 * r + 1
+        k = -2 * r + 1
         Q[i, l] = (
-            2.0
-            * np.prod((i[..., None] - m_seq) * (l[..., None] - m_seq), axis=-1)
-            * (t2**k - t1**k)
-            / k
+            np.prod((i[..., None] - m_seq) * (l[..., None] - m_seq), axis=-1)
+            * tau**k
+            / (k + i + l)
         )
         return Q
 
-    def compute_tvec(self, r: int, t: float):
-        tvec = np.zeros(self._degree + 1)
-        n_seq = np.arange(r, self._degree + 1, dtype=np.int64)
+    def compute_tvec(self, r, t):
+        tvec = np.zeros(self._n_cfs)
+        n_seq = np.arange(r, self._n_cfs, dtype=np.int64)
         r_seq = np.arange(0, r, dtype=np.int64)
         tvec[n_seq] = np.prod(n_seq[None, :] - r_seq[:, None], axis=0) * t ** (
             n_seq - r

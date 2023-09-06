@@ -37,7 +37,7 @@ def run_simulation(
     sim,
     solver,
     trajectory,
-    reference_over_sampling: int,
+    reference_over_sampling,
     profile_data=False,
     show_progress=True,
 ):
@@ -148,7 +148,7 @@ def visualize_tracking_results(
     ax.set_ylabel("Y (m)")
     ax.set_zlabel("Z (m)")  # type: ignore
     mean_z = expect_position[2, :].mean()
-    ax.set_zlim(mean_z - 1, mean_z + 1)
+    # ax.set_zlim(mean_z - 1, mean_z + 1)
 
     position_error = np.abs(expect_position - result_position)
     attitude_error = np.abs(

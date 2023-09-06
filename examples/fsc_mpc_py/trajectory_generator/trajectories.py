@@ -43,13 +43,46 @@ import warnings
 import numpy as np
 
 
+class NormalizedTime:
+    """
+    Represents normalized time for optimization purposes
+    """
+
+    def __init__(self, time):
+        self._time = np.asarray(time, np.float64)
+        self._durations = np.diff(self._time)
+
+    def __len__(self):
+        return self._time.size
+
+    def __array__(self):
+        return self._time
+
+    @property
+    def durations(self):
+        return self._durations
+
+    def find_piece(self, query_point):
+        if not self._time_in_range(query_point):
+            warnings.warn("Query point is outside of bounds. Clamping")
+            query_point = np.clip(query_point, self[0], self[-1])
+        idx = np.flatnonzero(query_point >= self._time[:-1])[-1]
+        nrm_time = (query_point - self._time[idx]) / self._durations[idx]
+        return idx, nrm_time
+
+    def __getitem__(self, query_point):
+        return self._time[query_point]
+
+    def _time_in_range(self, time):
+        return self._time[0] <= time <= self._time[-1]
+
+
 class Piece:
     """
     Represents a piece in a piecewise-polynomial trajectory
     """
 
-    def __init__(self, duration, coeffs):
-        self._duration = duration
+    def __init__(self, coeffs):
         self._coeffs = np.asarray(coeffs, dtype=np.float64)
         self._degree = self._coeffs.shape[1] - 1
 
@@ -57,7 +90,6 @@ class Piece:
 
     def __repr__(self):
         return f"""Order: {self._degree}
-Duration: {self._duration}
 Coefficients: \n{self._coeffs}"""
 
     @property
@@ -69,23 +101,19 @@ Coefficients: \n{self._coeffs}"""
         return self._degree
 
     @property
-    def duration(self):
-        return self._duration
-
-    @property
     def coeffs(self):
         return self._coeffs
 
-    def get_position(self, time: float):
+    def get_position(self, time):
         return self.get(time, 0)
 
-    def get_velocity(self, time: float):
+    def get_velocity(self, time):
         return self.get(time, 1)
 
-    def get_acceleration(self, time: float):
+    def get_acceleration(self, time):
         return self.get(time, 2)
 
-    def get(self, time: float, r: int):
+    def get(self, time, r):
         if r == 0:
             return self._coeffs @ (time ** np.arange(0, self._degree + 1))
         n_seq = np.arange(r, self._degree + 1, dtype=np.int64)
@@ -96,21 +124,18 @@ Coefficients: \n{self._coeffs}"""
             @ time ** (n_seq - r)
         )
 
-    @property
-    def normalized_pos_coeffs(self):
-        return self._coeffs * self._duration ** np.r_[self._degree : -1 : -1]
+    def normalized_pos_coeffs(self, duration):
+        return self._coeffs * duration ** np.r_[self._degree : -1 : -1]
 
-    @property
-    def normalized_vel_coeffs(self):
+    def normalized_vel_coeffs(self, duration):
         return self._coeffs[:, :-1] * (
-            self._duration ** np.r_[self._degree : -1 : -1][:-1]
+            duration ** np.r_[self._degree : -1 : -1][:-1]
             * np.r_[self._degree : -1 : -1][:-1]
         )
 
-    @property
-    def normalized_acc_coeffs(self):
+    def normalized_acc_coeffs(self, duration):
         return self._coeffs[:, :-2] * (
-            self._duration ** np.r_[self._degree : -1 : -1][:-2]
+            duration ** np.r_[self._degree : -1 : -1][:-2]
             * np.r_[self._degree : -1 : -1][:-2]
             * np.r_[self._degree : -1 : -1][1:-1]
         )
@@ -121,42 +146,23 @@ class PiecewisePolynomialTrajectory:
     Represents a piecewise polynomial trajectory
     """
 
-    def __init__(self, t_ref, coeffs) -> None:
-        self._t_ref = np.asarray(t_ref, dtype=np.float64)
-        self._durations = np.diff(self._t_ref)
-        self._n_pieces = self._durations.size
+    def __init__(self, t_ref: NormalizedTime, coeffs):
+        self._t_ref = t_ref
+
+        self._n_pieces = len(self._t_ref) - 1
         coeffs = np.asarray(coeffs, dtype=np.float64)
         if coeffs.ndim == 2:
             coeffs = coeffs[None, :, :]
         self._dim, self._degree, n_pieces = coeffs.shape
         if n_pieces != self._n_pieces:
             raise ValueError("Mismatch between durations vector and coefficients")
-        self._pieces = [
-            Piece(self._t_ref[idx], coeffs[:, :, idx]) for idx in range(self._n_pieces)
-        ]
+        self._pieces = [Piece(coeffs[:, :, idx]) for idx in range(self._n_pieces)]
 
     def __len__(self):
         return self._n_pieces
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx):
         return self._pieces[idx]
-
-    def find_piece(self, t):
-        t_clamped = np.clip(t, self._t_ref[0], self._t_ref[-1])
-        if t_clamped != t:
-            warnings.warn("Query time is clamped within range of trajectory")
-        idx = min(np.flatnonzero(t >= self._t_ref)[-1], self._n_pieces - 1)
-        return idx
-
-    def get_position(self, t_ref):
-        t_ref = np.asarray(t_ref, dtype=np.float64)
-        traj = np.zeros((self._dim, t_ref.size))
-        for k, t in enumerate(t_ref):
-            idx = self.find_piece(t)
-
-            traj[:, k] = self._pieces[idx].get(t, 0)
-
-        return traj
 
     def to_real_trajectory(self, vehicle_mass, t_ref, yaw_derivatives=None):
         if self._dim != 3:
@@ -166,10 +172,12 @@ class PiecewisePolynomialTrajectory:
         len_traj = t_ref.size
         traj_derivatives = np.zeros((4, self._dim, len_traj), dtype=np.float64)
         for k, t in enumerate(t_ref):
-            idx = self.find_piece(t)
+            idx, _ = self._t_ref.find_piece(t)
 
             for i in range(4):
-                traj_derivatives[i, :, k] = self._pieces[idx].get(t, i)
+                traj_derivatives[i, :, k] = self._pieces[idx].get(
+                    t - self._t_ref[idx], i
+                )
 
         traj_ref = np.zeros((10, len_traj))
         traj_ref[0:3, :] = np.squeeze(traj_derivatives[0, :, :])
@@ -192,17 +200,22 @@ class Trajectory:
     """
 
     def __init__(self, states, inputs, time):
-        self.time = np.asarray(time)
-        self.states = np.asarray(states)
-        self.inputs = np.asarray(inputs)
+        self.time = np.asarray(time, dtype=np.float64)
+        self.states = np.asarray(states, dtype=np.float64)
+        self.inputs = np.asarray(inputs, dtype=np.float64)
 
     def __len__(self):
         return self.time.size
 
     def __iadd__(self, other):
-        self.states = self.concatenate_or_set(self.states, other.states, axis=1)
-        self.inputs = self.concatenate_or_set(self.inputs, other.inputs, axis=1)
-        self.time = self.concatenate_or_set(self.time, other.time)
+        if not self.states.size:
+            self.states = self.states.reshape(other.states.shape[0], -1)
+
+        if not self.inputs.size:
+            self.inputs = self.inputs.reshape(other.inputs.shape[0], -1)
+        self.states = np.concatenate([self.states, other.states], axis=1)
+        self.inputs = np.concatenate([self.inputs, other.inputs], axis=1)
+        self.time = np.concatenate([self.time, other.time])
         return self
 
     def __add__(self, other):
@@ -236,14 +249,6 @@ class Trajectory:
         ]
 
         return ref_traj_chunk, ref_u_chunk
-
-    @staticmethod
-    def concatenate_or_set(val, other, **kwargs):
-        if val.size == 0:
-            val = other
-        else:
-            val = np.concatenate((val, other), **kwargs)
-        return val
 
 
 class MultirotorTrajectory(Trajectory):
