@@ -87,6 +87,19 @@
                 "linux-default",
                 "vcpkg"
             ]
+        },
+        {
+            "name": "vcpkg-linux-dev",
+            "displayName": "Linux X64 Vcpkg-based Development",
+            "description": "Linux X64 preset for developers/maintainers using a Vcpkg toolchain",
+            "inherits": [
+                "linux-default",
+                "vcpkg"
+            ],
+            "cacheVariables": {
+                "BUILD_TESTING": "ON",
+                "VCPKG_MANIFEST_FEATURES": "dev"
+            }
         }
     ],
     "buildPresets": [

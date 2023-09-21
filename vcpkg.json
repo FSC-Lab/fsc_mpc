@@ -2,11 +2,17 @@
     "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
     "name": "main",
     "version": "0.0.1",
+    "features": {
+        "dev": {
+            "description": "Testing/Benchmarking for development",
+            "dependencies": [
+                "benchmark",
+                "rapidjson",
+                "gtest"
+            ]
+        }
+    },
     "dependencies": [
-        "benchmark",
-        "openblas",
-        "gtest",
-        "eigen3",
-        "rapidjson"
+        "eigen3"
     ]
 }

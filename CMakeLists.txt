@@ -118,6 +118,7 @@ set_property(TARGET fsc_mpc_mpc_interface PROPERTY EXPORT_NAME mpc_interface)
 add_library(fsc_mpc::mpc_interface ALIAS fsc_mpc_mpc_interface)
 set_property(TARGET fsc_mpc_mpc_interface PROPERTY POSITION_INDEPENDENT_CODE ON)
 
+option(BUILD_TESTING "Build tests" OFF)
 include(CTest)
 if(BUILD_TESTING)
   add_subdirectory(tests)
