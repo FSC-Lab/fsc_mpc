@@ -21,6 +21,7 @@
 
 #include "fsc_mpc/mpc_interface.hpp"
 
+#include <exception>
 #include <limits>
 
 #include "fsc_mpc/internal.hpp"
@@ -29,11 +30,13 @@ extern "C" {
 #include "acados_c/ocp_nlp_interface.h"
 }
 
-#define ACADOS_CHECK(expr)                                                \
-  do {                                                                    \
-    if (expr) {                                                           \
-      throw AcadosWrapperException(#expr " returned nonzero error code"); \
-    }                                                                     \
+#define MPC_CHECK(expr)                                              \
+  do {                                                               \
+    if (expr) {                                                      \
+      std::fprintf(stderr, #expr " returned nonzero error code: %d", \
+                   static_cast<int>(expr));                          \
+      std::terminate();                                              \
+    }                                                                \
   } while (0)
 
 namespace fsc::control {
@@ -42,33 +45,16 @@ const MPCInterface::BoundsType MPCInterface::kNoBounds =
     MPCInterface::BoundsType::Constant(1e50);
 
 MPCInterface::MPCInterface() : capsule_(CreateCapsule()) {
-  ACADOS_CHECK(CreateSolver(capsule()));
+  MPC_CHECK(CreateSolver(capsule()));
   init();
 }
 
 MPCInterface::MPCInterface(InRef<Eigen::VectorXd> time_steps)
     : capsule_(CreateCapsule()) {
   using details::MutData;
-  ACADOS_CHECK(CreateSolverWithDiscretization(
+  MPC_CHECK(CreateSolverWithDiscretization(
       capsule(), static_cast<int>(time_steps.size()), MutData(time_steps)));
   init();
-}
-
-MPCInterface::MPCInterface(MPCInterface&& other) noexcept {
-  *this = std::move(other);
-}
-
-MPCInterface& MPCInterface::operator=(MPCInterface&& other) noexcept {
-  using std::swap;
-  if (this != &other) {
-    swap(other.capsule_, capsule_);
-    swap(other.config_, config_);
-    swap(other.dims_, dims_);
-    swap(other.in_, in_);
-    swap(other.out_, out_);
-    swap(other.solver_, solver_);
-  }
-  return *this;
 }
 
 MPCInterface::~MPCInterface() { FreeSolver(capsule()); }
@@ -113,18 +99,17 @@ void MPCInterface::setCostWeights(InRef<StateCostWeightType> q_weights,
            InputCostType(r_weights.asDiagonal()));
 }
 
-void MPCInterface::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
+bool MPCInterface::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
   using details::MutData;
   if ((lbu.array() > ubu.array()).any()) {
-    throw AcadosWrapperException(
-        "Some elements in lower bound are greater than corresponding elements "
-        "in upper bound");
+    return true;
   }
 
   for (int i = 0; i < num_mpc_nodes(); ++i) {
     ocp_nlp_constraints_model_set(config_, dims_, in_, i, "lbu", MutData(lbu));
     ocp_nlp_constraints_model_set(config_, dims_, in_, i, "ubu", MutData(ubu));
   }
+  return true;
 }
 
 MPCInterface::StateType MPCInterface::getState(int i) const {
@@ -165,14 +150,13 @@ void MPCInterface::setReferenceState(InRef<StateType> state,
   setTerminalReference(state);
 }
 
-void MPCInterface::setReferenceTrajectory(
+bool MPCInterface::setReferenceTrajectory(
     InRef<StateTrajectoryType> state_ref,
     InRef<InputTrajectoryType> input_ref) {
   const int n_x_samples = static_cast<int>(state_ref.cols());
   const int n_u_samples = static_cast<int>(input_ref.cols());
   if (n_x_samples != n_u_samples && n_x_samples != n_u_samples + 1) {
-    throw AcadosWrapperException(
-        "Number of state and input references do not match");
+    return false;
   }
 
   RefType ref;
@@ -184,6 +168,7 @@ void MPCInterface::setReferenceTrajectory(
   }
   setTerminalReference(
       state_ref.col(std::min<int>(n_x_samples - 1, num_mpc_nodes())));
+  return true;
 }
 
 void MPCInterface::setParameters(int i, InRef<ParamType> params) {
@@ -200,10 +185,14 @@ void MPCInterface::setPrintLevel(int value) {
   ocp_nlp_solver_opts_set(config_, opts_, "print_level", &value);
 }
 
-MPCInterface::InputType MPCInterface::optimize(InRef<StateType> state) {
+auto MPCInterface::optimize(InRef<StateType> state)
+    -> expected<InputType, int> {
   setInitialState(state);
-  ACADOS_CHECK(Solve(capsule()));
-  return getInput(0);
+  auto res = Solve(capsule());
+  if (res == 0) {
+    return getInput(0);
+  }
+  return unexpected(res);
 }
 
 void MPCInterface::init() {

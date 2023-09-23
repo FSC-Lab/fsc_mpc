@@ -199,13 +199,15 @@ void TestMPCInterface::RunSimulation() {
         full_input_ref.middleCols(i, n_input_ref);
 
     mpc.setReferenceTrajectory(state_ref, input_ref);
-    const MPCInterface::InputType u_setpoint = mpc.optimize(sim_->state());
+    const auto u_setpoint = mpc.optimize(sim_->state());
+    ASSERT_TRUE(u_setpoint);
+
     double simulation_time = 0.0;
 
-    actual_inputs.col(i) = u_setpoint;
+    actual_inputs.col(i) = *u_setpoint;
     while (simulation_time < control_period_) {
       simulation_time += sim_->dt();
-      sim_->input() = u_setpoint;
+      sim_->input() = *u_setpoint;
       sim_->simulationUpdate();
     }
   }

@@ -65,7 +65,8 @@ static void BenchmarkMPC(benchmark::State& state) {
 
     state.ResumeTiming();
 
-    MPCInterface::InputType input = mpc.optimize(x_op);
+    auto input = mpc.optimize(x_op).or_else([](auto&&) { std::terminate(); });
+
     benchmark::DoNotOptimize(input);
   }
 }

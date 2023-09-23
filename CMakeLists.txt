@@ -6,6 +6,7 @@ set(CMAKE_DISABLE_FIND_PACKAGE_OpenBLAS ON)
 find_package(OpenMP REQUIRED)
 find_package(acados REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(tl-expected REQUIRED)
 
 option(MPC_GENERATE_SOLVER "Toggles regenerating the solver" OFF)
 
@@ -113,7 +114,7 @@ target_include_directories(
   PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>")
 target_compile_features(fsc_mpc_mpc_interface PUBLIC cxx_std_17)
 target_link_libraries(fsc_mpc_mpc_interface PUBLIC fsc_mpc::solver
-                                                   Eigen3::Eigen)
+                                                   Eigen3::Eigen tl::expected)
 set_property(TARGET fsc_mpc_mpc_interface PROPERTY EXPORT_NAME mpc_interface)
 add_library(fsc_mpc::mpc_interface ALIAS fsc_mpc_mpc_interface)
 set_property(TARGET fsc_mpc_mpc_interface PROPERTY POSITION_INDEPENDENT_CODE ON)

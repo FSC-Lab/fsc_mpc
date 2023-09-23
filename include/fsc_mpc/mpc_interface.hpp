@@ -23,17 +23,20 @@
 #define FSC_MPC_MPC_INTERFACE_HPP_
 
 #include <memory>
-#include <stdexcept>
 
 #include "Eigen/Dense"
 #include "fsc_mpc/internal.hpp"
 #include "fsc_mpc/solver_wrapper.hpp"
+#include "tl/expected.hpp"
+
+#define EXPECTED_NS tl
+
+namespace fsc {
+using EXPECTED_NS::expected;    // NOLINT
+using EXPECTED_NS::unexpected;  // NOLINT
+}  // namespace fsc
 
 namespace fsc::control {
-
-class AcadosWrapperException : public std::runtime_error {
-  using std::runtime_error::runtime_error;
-};
 
 class MPCInterface {
  public:
@@ -172,7 +175,7 @@ class MPCInterface {
    * @param lbu The lower bounds on system inputs
    * @param ubu The upper bounds on system inputs
    */
-  void setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu);
+  bool setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu);
 
   /**
    * @brief Get the state predicted by the solver at some given shooting node
@@ -230,7 +233,7 @@ class MPCInterface {
    * @param state_ref The matrix containing the stack of state references
    * @param input_ref The matrix containing the stack of input references
    */
-  void setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
+  bool setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
                               InRef<InputTrajectoryType> input_ref);
 
   /**
@@ -264,7 +267,7 @@ class MPCInterface {
    * @param state A state vector containing the latest, actual system state
    * @return InputType The first optimized input
    */
-  InputType optimize(InRef<StateType> state);
+  expected<InputType, int> optimize(InRef<StateType> state);
 
   /**
    * @brief Gets the time step at a given shooting node
