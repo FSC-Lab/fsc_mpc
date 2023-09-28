@@ -58,33 +58,33 @@ if(MPC_GENERATE_SOLVER)
     COMMENT "Generating Acados solver library"
     VERBATIM)
 
-else()
-  if(MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)
-    # Step 1: Compile the shared object that the Python interface will depend on
-    add_library(acados_ocp_solver_${MPC_MODEL_NAME} SHARED ${CODEGEN_FILES})
-    target_link_libraries(acados_ocp_solver_${MPC_MODEL_NAME}
-                          PUBLIC acados blasfeo hpipm)
-
-    set_target_properties(
-      acados_ocp_solver_${MPC_MODEL_NAME}
-      PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${DEFAULT_CODEGEN_DIR}"
-                 LIBRARY_OUTPUT_DIRECTORY "${DEFAULT_CODEGEN_DIR}")
-  else()
-    foreach(file ${CODEGEN_FILES})
-      if(NOT ${file})
-        message(
-          FATAL_ERROR
-            "Could not find source file ${file} in user-provided MPC_CODEGEN_DIR, and "
-            "MPC_GENERATE_SOLVER is also set to false")
-      endif()
-    endforeach()
-  endif()
+elseif(NOT MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)
+  # User provided a new codegen dir but solver generation is toggled off. Check
+  # if the user put all required solver sources into the codegen dir a-priori
+  foreach(file ${CODEGEN_FILES})
+    if(NOT ${file})
+      message(
+        FATAL_ERROR
+          "Could not find source file ${file} in user-provided MPC_CODEGEN_DIR, and "
+          "MPC_GENERATE_SOLVER is also set to false")
+    endif()
+  endforeach()
 endif()
 
 add_custom_target(
   acados_python_codegen
   DEPENDS ${CODEGEN_FILES}
   COMMENT "Generating Acados solver library")
+
+# Step 1: Compile the shared object that the Python interface will depend on
+add_library(acados_ocp_solver_${MPC_MODEL_NAME} SHARED ${CODEGEN_FILES})
+add_dependencies(acados_ocp_solver_${MPC_MODEL_NAME} acados_python_codegen)
+target_link_libraries(acados_ocp_solver_${MPC_MODEL_NAME} PUBLIC acados blasfeo
+                                                                 hpipm)
+set_target_properties(
+  acados_ocp_solver_${MPC_MODEL_NAME}
+  PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${MPC_CODEGEN_DIR}"
+             LIBRARY_OUTPUT_DIRECTORY "${MPC_CODEGEN_DIR}")
 
 set(MODEL_NAME_LOWER
     ${MPC_MODEL_NAME}
@@ -121,7 +121,16 @@ set_property(TARGET fsc_mpc_mpc_interface PROPERTY POSITION_INDEPENDENT_CODE ON)
 option(BUILD_TESTING "Build tests" OFF)
 include(CTest)
 if(BUILD_TESTING)
+  if(NOT MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)
+    message(
+      AUTHOR_WARNING
+        "Unit tests are written for the default MPC solver but a new solver is generated. "
+        "Check carefully if your solver's state/input dimensions are compatible."
+    )
+  endif()
   add_subdirectory(tests)
 endif()
 
-include(cmake/install-rules.cmake)
+if(NOT CMAKE_SKIP_INSTALL_RULES)
+  include(cmake/install-rules.cmake)
+endif()
