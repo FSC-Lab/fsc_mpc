@@ -292,7 +292,13 @@ class MPCInterface {
  private:
   using Capsule = details::Handle<SolverCapsule, FreeCapsule>;
 
-  inline SolverCapsule *capsule() { return capsule_.get(); }
+  [[nodiscard]] inline auto *capsule() const { return capsule_.get(); }
+  [[nodiscard]] inline auto *config() const { return GetConfig(capsule()); }
+  [[nodiscard]] inline auto *dims() const { return GetDims(capsule()); }
+  [[nodiscard]] inline auto *in() const { return GetInput(capsule()); }
+  [[nodiscard]] inline auto *out() const { return GetOutput(capsule()); }
+  [[nodiscard]] inline auto *solver() const { return GetSolver(capsule()); }
+  [[nodiscard]] inline auto *opts() const { return GetOpts(capsule()); }
 
   void init();
 
@@ -303,13 +309,6 @@ class MPCInterface {
   void setInput(int i, InRef<InputType> input);
 
   Capsule capsule_;
-
-  ocp_nlp_config *config_{nullptr};
-  ocp_nlp_dims *dims_{nullptr};
-  ocp_nlp_in *in_{nullptr};
-  ocp_nlp_out *out_{nullptr};
-  ocp_nlp_solver *solver_{nullptr};
-  ocp_nlp_opts *opts_{nullptr};
 };
 
 }  // namespace fsc::control

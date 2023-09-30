@@ -62,11 +62,6 @@ MPCInterface& MPCInterface::operator=(MPCInterface&& other) noexcept {
   using std::swap;
   if (this != &other) {
     swap(other.capsule_, capsule_);
-    swap(other.config_, config_);
-    swap(other.dims_, dims_);
-    swap(other.in_, in_);
-    swap(other.out_, out_);
-    swap(other.solver_, solver_);
   }
   return *this;
 }
@@ -79,20 +74,20 @@ void MPCInterface::resetSolver(bool reset_qp_solver_mem) {
 
 void MPCInterface::setInitialState(InRef<StateType> initial_state) {
   using details::MutData;
-  ocp_nlp_constraints_model_set(config_, dims_, in_, 0, "lbx",
+  ocp_nlp_constraints_model_set(config(), dims(), in(), 0, "lbx",
                                 MutData(initial_state));
-  ocp_nlp_constraints_model_set(config_, dims_, in_, 0, "ubx",
+  ocp_nlp_constraints_model_set(config(), dims(), in(), 0, "ubx",
                                 MutData(initial_state));
 }
 
 void MPCInterface::setReference(int i, InRef<RefType> ref) {
   using details::MutData;
-  ocp_nlp_cost_model_set(config_, dims_, in_, i, "y_ref", MutData(ref));
+  ocp_nlp_cost_model_set(config(), dims(), in(), i, "y_ref", MutData(ref));
 }
 
 void MPCInterface::setTerminalReference(InRef<EndRefType> terminal_ref) {
   using details::MutData;
-  ocp_nlp_cost_model_set(config_, dims_, in_, num_mpc_nodes(), "y_ref",
+  ocp_nlp_cost_model_set(config(), dims(), in(), num_mpc_nodes(), "y_ref",
                          MutData(terminal_ref));
 }
 
@@ -102,9 +97,10 @@ void MPCInterface::setCosts(InRef<StateCostType> Q, InRef<InputCostType> R) {
   costs.topLeftCorner<kCostSize, kCostSize>() = Q;
   costs.bottomRightCorner<kInputSize, kInputSize>() = R;
   for (int i = 0; i < num_mpc_nodes(); ++i) {
-    ocp_nlp_cost_model_set(config_, dims_, in_, i, "W", costs.data());
+    ocp_nlp_cost_model_set(config(), dims(), in(), i, "W", costs.data());
   }
-  ocp_nlp_cost_model_set(config_, dims_, in_, num_mpc_nodes(), "W", MutData(Q));
+  ocp_nlp_cost_model_set(config(), dims(), in(), num_mpc_nodes(), "W",
+                         MutData(Q));
 }
 
 void MPCInterface::setCostWeights(InRef<StateCostWeightType> q_weights,
@@ -122,20 +118,22 @@ void MPCInterface::setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu) {
   }
 
   for (int i = 0; i < num_mpc_nodes(); ++i) {
-    ocp_nlp_constraints_model_set(config_, dims_, in_, i, "lbu", MutData(lbu));
-    ocp_nlp_constraints_model_set(config_, dims_, in_, i, "ubu", MutData(ubu));
+    ocp_nlp_constraints_model_set(config(), dims(), in(), i, "lbu",
+                                  MutData(lbu));
+    ocp_nlp_constraints_model_set(config(), dims(), in(), i, "ubu",
+                                  MutData(ubu));
   }
 }
 
 MPCInterface::StateType MPCInterface::getState(int i) const {
   StateType res;
-  ocp_nlp_out_get(config_, dims_, out_, i, "x", res.data());
+  ocp_nlp_out_get(config(), dims(), out(), i, "x", res.data());
   return res;
 }
 
 MPCInterface::InputType MPCInterface::getInput(int i) const {
   InputType res;
-  ocp_nlp_out_get(config_, dims_, out_, i, "u", res.data());
+  ocp_nlp_out_get(config(), dims(), out(), i, "u", res.data());
   return res;
 }
 
@@ -197,7 +195,7 @@ void MPCInterface::setConstantParameters(InRef<ParamType> params) {
 }
 
 void MPCInterface::setPrintLevel(int value) {
-  ocp_nlp_solver_opts_set(config_, opts_, "print_level", &value);
+  ocp_nlp_solver_opts_set(config(), opts(), "print_level", &value);
 }
 
 MPCInterface::InputType MPCInterface::optimize(InRef<StateType> state) {
@@ -210,21 +208,14 @@ void MPCInterface::init() {
   using StateIdxs = Eigen::Matrix<int, kStateSize, 1>;
   using InputIdxs = Eigen::Matrix<int, kInputSize, 1>;
 
-  config_ = GetConfig(capsule());
-  dims_ = GetDims(capsule());
-  in_ = GetInput(capsule());
-  out_ = GetOutput(capsule());
-  solver_ = GetSolver(capsule());
-  opts_ = GetOpts(capsule());
-
   // Initialize the state constraint
   StateIdxs constrained_state_idx = StateIdxs::LinSpaced(0, kStateSize - 1);
-  ocp_nlp_constraints_model_set(config_, dims_, in_, 0, "idxbx",
+  ocp_nlp_constraints_model_set(config(), dims(), in(), 0, "idxbx",
                                 constrained_state_idx.data());
 
   InputIdxs constrained_input_idx = InputIdxs::LinSpaced(0, kInputSize - 1);
   for (int i = 0; i < num_mpc_nodes(); ++i) {
-    ocp_nlp_constraints_model_set(config_, dims_, in_, i, "idxbu",
+    ocp_nlp_constraints_model_set(config(), dims(), in(), i, "idxbu",
                                   constrained_input_idx.data());
     setBounds(-kNoBounds, kNoBounds);
   }
@@ -239,7 +230,7 @@ void MPCInterface::init() {
 
 void MPCInterface::setState(int i, InRef<StateType> state) {
   using details::MutData;
-  ocp_nlp_out_set(config_, dims_, out_, i, "x", MutData(state));
+  ocp_nlp_out_set(config(), dims(), out(), i, "x", MutData(state));
 }
 
 void MPCInterface::setTerminalState(InRef<StateType> terminal_state) {
@@ -248,15 +239,15 @@ void MPCInterface::setTerminalState(InRef<StateType> terminal_state) {
 
 void MPCInterface::setInput(int i, InRef<InputType> input) {
   using details::MutData;
-  ocp_nlp_out_set(config_, dims_, out_, i, "u", MutData(input));
+  ocp_nlp_out_set(config(), dims(), out(), i, "u", MutData(input));
 }
 
-double MPCInterface::step_length(int i) const { return in_->Ts[i]; }
+double MPCInterface::step_length(int i) const { return in()->Ts[i]; }
 
 Eigen::VectorXd MPCInterface::step_length() const {
-  return Eigen::VectorXd::Map(in_->Ts, num_mpc_nodes());
+  return Eigen::VectorXd::Map(in()->Ts, num_mpc_nodes());
 }
 
-int MPCInterface::num_mpc_nodes() const { return dims_->N; }
+int MPCInterface::num_mpc_nodes() const { return dims()->N; }
 
 }  // namespace fsc::control
