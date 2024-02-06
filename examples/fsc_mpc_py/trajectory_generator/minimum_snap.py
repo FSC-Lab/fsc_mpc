@@ -26,8 +26,8 @@ from typing import Tuple, Union
 
 import numpy as np
 from fsc_mpc_py.trajectory_generator import (
-    PiecewisePolynomialTrajectory,
     NormalizedTime,
+    PiecewisePolynomialTrajectory,
 )
 from numpy.typing import ArrayLike
 from scipy import optimize
@@ -134,7 +134,7 @@ class MinimumSnap:
         )
 
     def _solve_unconstr(self, refs, t_ref, Q_all):
-        polys = np.zeros((self._dim, self._n_cfs, self._n_poly))
+        polys = []
         for d in range(self._dim):
             # compute Tk   Tk(i,j) = ts(i)^(j-1)
 
@@ -182,13 +182,11 @@ class MinimumSnap:
 
             dp = -np.linalg.solve(Rpp, Rfp.T @ df)
 
-            p = np.reshape(
-                AiMC @ np.concatenate([df, dp]), (self._n_cfs, self._n_poly), order="F"
+            p = np.reshape(AiMC @ np.concatenate([df, dp]), (self._n_poly, self._n_cfs))
+            polys.append(
+                (1.0 / t_ref.durations[..., None]) ** np.arange(0, self._n_cfs) * p
             )
-            polys[d, :, :] = (1.0 / t_ref.durations[None]) ** np.arange(0, self._n_cfs)[
-                ..., None
-            ] * p
-
+        polys = np.dstack(polys)
         return PiecewisePolynomialTrajectory(t_ref, polys)
 
     def _solve_constr(self, refs, t_ref, Q_all):

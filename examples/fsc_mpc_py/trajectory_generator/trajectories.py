@@ -84,7 +84,7 @@ class Piece:
 
     def __init__(self, coeffs):
         self._coeffs = np.asarray(coeffs, dtype=np.float64)
-        self._degree = self._coeffs.shape[1] - 1
+        self._degree = self._coeffs.shape[0] - 1
 
         # index sequence for raising to power and polynomial derivative coefficients
 
@@ -115,29 +115,12 @@ Coefficients: \n{self._coeffs}"""
 
     def get(self, time, r):
         if r == 0:
-            return self._coeffs @ (time ** np.arange(0, self._degree + 1))
+            return (time ** np.arange(0, self._degree + 1)) @ self._coeffs
         n_seq = np.arange(r, self._degree + 1, dtype=np.int64)
         r_seq = np.arange(0, r, dtype=np.int64)
-        return (
-            np.prod(n_seq[None, :] - r_seq[:, None], axis=0)
-            * self._coeffs[:, n_seq]
-            @ time ** (n_seq - r)
-        )
-
-    def normalized_pos_coeffs(self, duration):
-        return self._coeffs * duration ** np.r_[self._degree : -1 : -1]
-
-    def normalized_vel_coeffs(self, duration):
-        return self._coeffs[:, :-1] * (
-            duration ** np.r_[self._degree : -1 : -1][:-1]
-            * np.r_[self._degree : -1 : -1][:-1]
-        )
-
-    def normalized_acc_coeffs(self, duration):
-        return self._coeffs[:, :-2] * (
-            duration ** np.r_[self._degree : -1 : -1][:-2]
-            * np.r_[self._degree : -1 : -1][:-2]
-            * np.r_[self._degree : -1 : -1][1:-1]
+        return time ** (n_seq - r) @ (
+            np.prod(n_seq[None, :] - r_seq[:, None], axis=0)[..., None]
+            * self._coeffs[n_seq, :]
         )
 
 
@@ -156,7 +139,7 @@ class PiecewisePolynomialTrajectory:
         self._dim, self._degree, n_pieces = coeffs.shape
         if n_pieces != self._n_pieces:
             raise ValueError("Mismatch between durations vector and coefficients")
-        self._pieces = [Piece(coeffs[:, :, idx]) for idx in range(self._n_pieces)]
+        self._pieces = list(map(Piece, coeffs))
 
     def __len__(self):
         return self._n_pieces
@@ -164,28 +147,27 @@ class PiecewisePolynomialTrajectory:
     def __getitem__(self, idx):
         return self._pieces[idx]
 
-    def to_real_trajectory(self, vehicle_mass, t_ref, yaw_derivatives=None):
+    def to_real_trajectory(self, vehicle_mass, t_ref, yaw_derivatives=None, order=4):
         if self._dim != 3:
             raise ValueError("This method is only for 3D trajectories")
 
         t_ref = np.asarray(t_ref, dtype=np.float64)
         len_traj = t_ref.size
-        traj_derivatives = np.zeros((4, self._dim, len_traj), dtype=np.float64)
-        for k, t in enumerate(t_ref):
-            idx, _ = self._t_ref.find_piece(t)
+        traj_derivatives = np.zeros((order, len_traj, self._dim), dtype=np.float64)
+        for r in range(order):
+            for k, t in enumerate(t_ref):
+                idx, _ = self._t_ref.find_piece(t)
 
-            for i in range(4):
-                traj_derivatives[i, :, k] = self._pieces[idx].get(
-                    t - self._t_ref[idx], i
-                )
+                segment_time = t - self._t_ref[idx]
+                traj_derivatives[r, k, :] = self._pieces[idx].get(segment_time, r)
 
-        traj_ref = np.zeros((10, len_traj))
-        traj_ref[0:3, :] = np.squeeze(traj_derivatives[0, :, :])
-        traj_ref[7:10, :] = np.squeeze(traj_derivatives[1, :, :])
+        traj_ref = np.zeros((len_traj, 10))
+        traj_ref[:, 0:3] = np.squeeze(traj_derivatives[0, :, :])
+        traj_ref[:, 7:10] = np.squeeze(traj_derivatives[1, :, :])
         if yaw_derivatives is None:
             yaw_derivatives = np.zeros((2, len_traj), dtype=np.float64)
 
-        traj_ref[3:7, :], u_ref = forward(
+        traj_ref[:, 3:7], u_ref = forward(
             traj_derivatives[1:, :, :],
             yaw_derivatives,
             vehicle_mass,
@@ -278,14 +260,14 @@ class MultirotorTrajectory(Trajectory):
 
 
 def forward(traj_refs, yaw_refs, vehicle_mass, grav=9.81, drag_params=None):
-    grav_vector = np.array([[0.0], [0.0], [grav]])
+    grav_vector = np.array([0.0, 0.0, grav])
     traj_refs = np.asarray(traj_refs, dtype=np.float64)
     traj_refs = np.atleast_3d(traj_refs)
 
-    n_ders, n_dims, len_traj = traj_refs.shape
+    n_ders, len_traj, n_dims = traj_refs.shape
     if (n_ders, n_dims) != (3, 3):
         raise ValueError(
-            "Trajectory references must be 3D kinematical derivatives stacked"
+            "Trajectory references must be 3D kinematical derivatives stacked "
             "columnwise"
         )
 
@@ -296,12 +278,12 @@ def forward(traj_refs, yaw_refs, vehicle_mass, grav=9.81, drag_params=None):
     psi = yaw_refs[0, ...]
     dpsi = yaw_refs[1, ...]
 
-    attitude = np.empty((4, len_traj), dtype=np.float64)
-    inputs = np.empty((4, len_traj), dtype=np.float64)
+    attitude = np.empty((len_traj, 4), dtype=np.float64)
+    inputs = np.empty((len_traj, 4), dtype=np.float64)
     if drag_params is not None:
-        cp_term = np.sqrt(np.sum(vel * vel, axis=0) + drag_params["veps"])
+        cp_term = np.sqrt(np.sum(vel * vel, axis=1) + drag_params["veps"])
         w_term = 1.0 + drag_params["cp"] * cp_term
-        v_dot_a = np.sum(vel * acc, axis=0)
+        v_dot_a = np.sum(vel * acc, axis=1)
         dw_term = drag_params["cp"] * v_dot_a / cp_term
 
         dw = w_term * acc + dw_term * vel
@@ -309,7 +291,7 @@ def forward(traj_refs, yaw_refs, vehicle_mass, grav=9.81, drag_params=None):
         dh_over_m = drag_params["dh"] / vehicle_mass
 
         z = acc + dh_over_m * w + grav_vector
-        z_nrm = np.linalg.norm(z, axis=0, keepdims=True)
+        z_nrm = np.linalg.norm(z, axis=1, keepdims=True)
         z /= z_nrm
 
         dz = -np.cross(z, np.cross(z, jer + dh_over_m * dw, axis=0), axis=0) / z_nrm
@@ -318,36 +300,36 @@ def forward(traj_refs, yaw_refs, vehicle_mass, grav=9.81, drag_params=None):
         )
     else:
         z = acc + grav_vector
-        z_nrm = np.linalg.norm(z, axis=0, keepdims=True)
+        z_nrm = np.linalg.norm(z, axis=1, keepdims=True)
         z /= z_nrm
 
-        dz = -np.cross(z, np.cross(z, jer, axis=0), axis=0) / z_nrm
-        inputs[0, :] = np.sum(z * (vehicle_mass * (acc + grav_vector)), axis=0)
+        dz = -np.cross(z, np.cross(z, jer, axis=1), axis=1) / z_nrm
+        inputs[:, 0] = np.sum(z * (vehicle_mass * (acc + grav_vector)), axis=1)
 
-    tilt_den = np.sqrt(2.0 * (1.0 + z[2, :]))
+    tilt_den = np.sqrt(2.0 * (1.0 + z[:, 2]))
     tilt0 = 0.5 * tilt_den
-    tilt1 = -z[1, :] / tilt_den
-    tilt2 = z[0, :] / tilt_den
+    tilt1 = -z[:, 1] / tilt_den
+    tilt2 = z[:, 0] / tilt_den
     c_half_psi = np.cos(0.5 * psi)
     s_half_psi = np.sin(0.5 * psi)
-    attitude[0, :] = tilt1 * c_half_psi + tilt2 * s_half_psi
-    attitude[1, :] = tilt2 * c_half_psi - tilt1 * s_half_psi
-    attitude[2, :] = tilt0 * s_half_psi
-    attitude[3, :] = tilt0 * c_half_psi
+    attitude[:, 0] = tilt1 * c_half_psi + tilt2 * s_half_psi
+    attitude[:, 1] = tilt2 * c_half_psi - tilt1 * s_half_psi
+    attitude[:, 2] = tilt0 * s_half_psi
+    attitude[:, 3] = tilt0 * c_half_psi
     c_psi = np.cos(psi)
     s_psi = np.sin(psi)
-    omg_den = z[2, :] + 1.0
-    omg_term = dz[2, :] / omg_den
-    inputs[1, :] = (
-        dz[0, :] * s_psi
-        - dz[1, :] * c_psi
-        - (z[0, :] * s_psi - z[1, :] * c_psi) * omg_term
+    omg_den = z[:, 2] + 1.0
+    omg_term = dz[:, 2] / omg_den
+    inputs[:, 1] = (
+        dz[:, 0] * s_psi
+        - dz[:, 1] * c_psi
+        - (z[:, 0] * s_psi - z[:, 1] * c_psi) * omg_term
     )
-    inputs[2, :] = (
-        dz[0, :] * c_psi
-        + dz[1, :] * s_psi
-        - (z[0, :] * c_psi + z[1, :] * s_psi) * omg_term
+    inputs[:, 2] = (
+        dz[:, 0] * c_psi
+        + dz[:, 1] * s_psi
+        - (z[:, 0] * c_psi + z[:, 1] * s_psi) * omg_term
     )
-    inputs[3, :] = (z[1, :] * dz[0, :] - z[0, :] * dz[1, :]) / omg_den + dpsi
+    inputs[:, 3] = (z[:, 1] * dz[:, 0] - z[:, 0] * dz[:, 1]) / omg_den + dpsi
 
     return np.squeeze(attitude), np.squeeze(inputs)
