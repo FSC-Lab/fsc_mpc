@@ -77,6 +77,11 @@ add_custom_target(
   DEPENDS ${CODEGEN_FILES}
   COMMENT "Generating Acados solver library")
 
+# The default codegen'd sources come with a specialized 'acados_ocp_nlp.json'
+# that is templated on this project and ACADOS's installation path
+configure_file(${DEFAULT_CODEGEN_DIR}/acados_ocp_nlp.json.in
+               ${DEFAULT_CODEGEN_DIR}/acados_ocp_nlp.json)
+
 # Step 1: Compile the shared object that the Python interface will depend on
 add_library(acados_ocp_solver_${MPC_MODEL_NAME} SHARED ${CODEGEN_FILES})
 add_dependencies(acados_ocp_solver_${MPC_MODEL_NAME} acados_python_codegen)

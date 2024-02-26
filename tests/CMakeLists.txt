@@ -9,13 +9,6 @@ include(GoogleTest)
 # Step 1: Generate test data using python
 set(TEST_DATA_FILE ${CMAKE_CURRENT_SOURCE_DIR}/test_data.json)
 
-# The default codegen'd sources come with a specialized 'acados_ocp_nlp.json'
-# that is templated on this project and ACADOS's installation path
-if(MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)
-  configure_file(${DEFAULT_CODEGEN_DIR}/acados_ocp_nlp.json.in
-                 ${DEFAULT_CODEGEN_DIR}/acados_ocp_nlp.json)
-endif()
-
 add_custom_command(
   OUTPUT ${TEST_DATA_FILE}
   COMMAND
