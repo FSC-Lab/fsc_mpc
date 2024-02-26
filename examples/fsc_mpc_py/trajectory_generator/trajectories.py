@@ -212,22 +212,22 @@ class Trajectory:
     def get_reference_chunk(self, idx, n_nodes, reference_over_sampling=1):
         # Dense references
         ref_traj_chunk = self.states[
-            :, idx : idx + (n_nodes + 1) * reference_over_sampling
+            idx : idx + (n_nodes + 1) * reference_over_sampling, :
         ]
-        ref_u_chunk = self.inputs[:, idx : idx + n_nodes * reference_over_sampling]
+        ref_u_chunk = self.inputs[idx : idx + n_nodes * reference_over_sampling, :]
 
         # Indices for down-sampling the reference to number of MPC nodes
         downsample_ref_ind = np.arange(
             0,
-            min(reference_over_sampling * (n_nodes + 1), ref_traj_chunk.shape[1]),
+            min(reference_over_sampling * (n_nodes + 1), ref_traj_chunk.shape[0]),
             reference_over_sampling,
             dtype=int,
         )
 
         # Sparser references (same dt as node separation)
-        ref_traj_chunk = ref_traj_chunk[:, downsample_ref_ind]
+        ref_traj_chunk = ref_traj_chunk[downsample_ref_ind, :]
         ref_u_chunk = ref_u_chunk[
-            :, downsample_ref_ind[: max(len(downsample_ref_ind) - 1, 1)]
+            downsample_ref_ind[: max(len(downsample_ref_ind) - 1, 1)], :
         ]
 
         return ref_traj_chunk, ref_u_chunk
@@ -240,23 +240,23 @@ class MultirotorTrajectory(Trajectory):
 
     @property
     def position(self):
-        return self.states[0:3, :]
+        return self.states[:, 0:3]
 
     @property
     def attitude(self):
-        return self.states[3:7, :]
+        return self.states[:, 3:7]
 
     @property
     def velocity(self):
-        return self.states[7:10, :]
+        return self.states[:, 7:10]
 
     @property
     def thrust(self):
-        return self.inputs[0, :]
+        return self.inputs[:, 0]
 
     @property
     def angular_velocity(self):
-        return self.inputs[1:3, :]
+        return self.inputs[:, 1:3]
 
 
 def forward(traj_refs, yaw_refs, vehicle_mass, grav=9.81, drag_params=None):

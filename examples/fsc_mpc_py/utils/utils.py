@@ -26,11 +26,11 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
+from fsc_mpc_py.trajectory_generator import MultirotorTrajectory
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.spatial.transform import Rotation
 
 from .. import mpc_interface
-from fsc_mpc_py.trajectory_generator import MultirotorTrajectory
 
 
 def run_simulation(
@@ -97,7 +97,7 @@ def run_simulation(
             sim.simulation_update()
 
     tout = np.asarray(tout)
-    yout = {k: np.column_stack(v) for k, v in yout.items()}
+    yout = {k: np.array(v) for k, v in yout.items()}
     yout = MultirotorTrajectory(yout["states"], yout["inputs"], tout)
 
     return yout, np.asarray(solve_time, dtype=np.float64) if profile_data else yout
@@ -129,16 +129,16 @@ def visualize_tracking_results(
     result_velocity = yout.velocity
 
     ax.plot(
-        expect_position[0, :],
-        expect_position[1, :],
-        expect_position[2, :],
+        expect_position[:, 0],
+        expect_position[:, 1],
+        expect_position[:, 2],
         linewidth=2,
         label="Trajectory Reference",
     )
     ax.plot(
-        result_position[0, :],
-        result_position[1, :],
-        result_position[2, :],
+        result_position[:, 0],
+        result_position[:, 1],
+        result_position[:, 2],
         "--",
         linewidth=2,
         label="Simulated Trajectory",
@@ -147,17 +147,15 @@ def visualize_tracking_results(
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Y (m)")
     ax.set_zlabel("Z (m)")  # type: ignore
-    mean_z = expect_position[2, :].mean()
+    mean_z = expect_position[:, 2].mean()
     # ax.set_zlim(mean_z - 1, mean_z + 1)
 
     position_error = np.abs(expect_position - result_position)
     attitude_error = np.abs(
         (
-            Rotation.from_quat(expect_attitude.T)
-            * Rotation.from_quat(result_attitude.T).inv()
-        )
-        .as_rotvec()
-        .T
+            Rotation.from_quat(expect_attitude)
+            * Rotation.from_quat(result_attitude).inv()
+        ).as_rotvec()
     )
 
     velocity_error = np.abs(expect_velocity - result_velocity)
@@ -171,34 +169,34 @@ def visualize_tracking_results(
     for idx, it in enumerate("XYZ"):
         ax[0].plot(
             tout,
-            position_error[idx, :],
+            position_error[:, idx],
             alpha=0.5,
             label=f"{it}-axis absolute position error",
         )
         ax[0].axhline(
-            position_error[idx, :].mean(),
+            position_error[:, idx].mean(),
             color=f"C{idx}",
             label=f"{it}-axis position MAE",
         )
         ax[1].plot(
             tout,
-            attitude_error[idx, :],
+            attitude_error[:, idx],
             alpha=0.5,
             label=f"{it}-axis absolute angular error",
         )
         ax[1].axhline(
-            attitude_error[idx, :].mean(),
+            attitude_error[:, idx].mean(),
             color=f"C{idx}",
             label=f"{it}-axis attitude MAE",
         )
         ax[2].plot(
             tout,
-            velocity_error[idx, :],
+            velocity_error[:, idx],
             alpha=0.5,
             label=f"{it}-axis absolute velocity error",
         )
         ax[2].axhline(
-            velocity_error[idx, :].mean(),
+            velocity_error[:, idx].mean(),
             color=f"C{idx}",
             label=f"{it}-axis velocity MAE",
         )

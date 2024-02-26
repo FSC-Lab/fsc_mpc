@@ -122,8 +122,8 @@ class MPCInterface:
 
         x_reference = np.asarray(x_reference, dtype=np.float64)
         u_reference = np.asarray(u_reference, dtype=np.float64)
-        n_x_samples = x_reference.shape[1]
-        n_u_samples = u_reference.shape[1]
+        n_x_samples = x_reference.shape[0]
+        n_u_samples = u_reference.shape[0]
         if n_x_samples not in (n_u_samples + 1, n_u_samples):
             raise MPCInterfaceException(
                 f"Number of state ({n_x_samples}) and input ({n_u_samples}) references"
@@ -134,19 +134,17 @@ class MPCInterface:
         # length is met
         if n_x_samples < self.n_nodes + 1:
             x_reference = np.pad(
-                x_reference, ((0, 0), (0, self.n_nodes + 1 - n_x_samples)), "edge"
+                x_reference, ((0, self.n_nodes + 1 - n_x_samples), (0, 0)), "edge"
             )
             u_reference = np.pad(
-                u_reference, ((0, 0), (0, self.n_nodes - n_u_samples)), "edge"
+                u_reference, ((0, self.n_nodes - n_u_samples), (0, 0)), "edge"
             )
 
-        ref = np.empty(self._ny)
         for j in range(self.n_nodes):
-            ref[0 : self._nx] = x_reference[:, j]
-            ref[self._nx :] = u_reference[:, j]
+            ref = np.concatenate([x_reference[j, :], u_reference[j, :]])
             self._solver.set(j, "yref", ref)
         # the last MPC node has only a state reference but no input reference
-        self._solver.set(self.n_nodes, "yref", x_reference[:, self.n_nodes])
+        self._solver.set(self.n_nodes, "yref", x_reference[self.n_nodes, :])
 
     def set_reference_state(self, x_reference, u_reference):
         ref = np.concatenate((np.asarray(x_reference), np.asarray(u_reference)))

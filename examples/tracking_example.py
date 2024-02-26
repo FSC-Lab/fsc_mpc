@@ -140,7 +140,7 @@ def main():
         mass=QUADROTOR_MASS,
         base_dt=simulation_dt,
         init_time=0.0,
-        init_state=np.array(trajectory.states[:, 0]),
+        init_state=np.array(trajectory.states[0, :]),
         init_input=np.zeros((4,)),
         grav_accel=-9.81,
         quaternion_normalization_gain=2.0,
@@ -168,7 +168,7 @@ def main():
         model, solver, trajectory, reference_over_sampling, profile_data=True
     )
     tracking_rmse = np.mean(
-        np.sqrt(np.sum((trajectory.position - yout.position) ** 2, axis=1))
+        np.sqrt(np.sum((trajectory.position - yout.position) ** 2, axis=0))
     )
 
     _ = utils.visualize_tracking_results(yout.time, yout, trajectory, autoshow=True)
