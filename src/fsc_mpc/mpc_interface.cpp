@@ -21,12 +21,25 @@
 
 #include "fsc_mpc/mpc_interface.hpp"
 
-#include "fsc_mpc/internal.hpp"
-#include "fsc_mpc/solver_wrapper.hpp"
-
-extern "C" {
 #include "acados_c/ocp_nlp_interface.h"
-}
+
+#define CAT_IMPL(A, B) A##B
+#define CAT(A, B) CAT_IMPL(A, B)
+
+#define STRINGIFY_IMPL(A) #A
+#define STRINGIFY(A) STRINGIFY_IMPL(A)
+
+#ifndef MODEL_NAME_UPPER
+#error MISSING DEFINITION FOR MODEL_NAME_UPPER
+#endif
+
+#ifndef MODEL_NAME_LOWER
+#error MISSING DEFINITION FOR MODEL_NAME_LOWER
+#endif
+
+#define SOLVER_LIB STRINGIFY(CAT(acados_solver_, MODEL_NAME_LOWER).h)
+
+#include SOLVER_LIB
 
 #define ACADOS_CHECK(expr)                                                \
   do {                                                                    \
@@ -35,80 +48,158 @@ extern "C" {
     }                                                                     \
   } while (0)
 
+#define ACADOS_PARAM(PARM) CAT(CAT(MODEL_NAME_UPPER, _), PARM)
+
+#define ACADOS_OBJ(func) CAT(CAT(MODEL_NAME_LOWER, _), func)
+
 namespace fsc::control {
+
+namespace details {
+template <typename T>
+constexpr auto MutData(const T& obj) -> std::add_pointer_t<
+    std::remove_const_t<std::remove_pointer_t<decltype(obj.data())>>> {
+  using ConstElement = std::remove_pointer_t<decltype(obj.data())>;
+  using MutPtr = std::add_pointer_t<std::remove_const_t<ConstElement>>;
+  return const_cast<MutPtr>(obj.data());
+}
+
 enum {
-  kStateSize = details::ToUnderlying(Dimensions::kStateSize),
-  kInputSize = details::ToUnderlying(Dimensions::kInputSize),
-  kRefSize = details::ToUnderlying(Dimensions::kRefSize),
-  kEndRefSize = details::ToUnderlying(Dimensions::kEndRefSize),
-  kSamples = details::ToUnderlying(Dimensions::kSamples),
-  kCostSize = details::ToUnderlying(Dimensions::kCostSize),
-  kBoundsSize = details::ToUnderlying(Dimensions::kBoundsSize),
-  kParamSize = details::ToUnderlying(Dimensions::kParamSize)
+  kStateSize = ACADOS_PARAM(NX),
+  kInputSize = ACADOS_PARAM(NU),
+  kRefSize = ACADOS_PARAM(NY),
+  kEndRefSize = ACADOS_PARAM(NYN),
+  kSamples = ACADOS_PARAM(N),
+  kCostSize = ACADOS_PARAM(NY) - ACADOS_PARAM(NU),
+  kBoundsSize = ACADOS_PARAM(NBU),
+  kParamSize = ACADOS_PARAM(NP)
 };
 
+using SolverCapsule = ACADOS_OBJ(solver_capsule);
+
+SolverCapsule* CreateCapsule() { return ACADOS_OBJ(acados_create_capsule)(); }
+
+int CreateSolver(SolverCapsule* capsule) {
+  return ACADOS_OBJ(acados_create)(capsule);
+}
+
+struct FreeCapsule {
+  void operator()(SolverCapsule* capsule) {
+    std::ignore = ACADOS_OBJ(acados_free_capsule)(capsule);
+  }
+};
+
+int FreeSolver(SolverCapsule* capsule) {
+  return ACADOS_OBJ(acados_free)(capsule);
+}
+
+int ResetSolver(SolverCapsule* capsule, bool reset_qp_solver_mem) {
+  return ACADOS_OBJ(acados_reset)(capsule,
+                                  static_cast<int>(reset_qp_solver_mem));
+}
+
+int CreateSolverWithDiscretization(SolverCapsule* capsule, int n_time_steps,
+                                   double* new_time_steps) {
+  return ACADOS_OBJ(acados_create_with_discretization)(capsule, n_time_steps,
+                                                       new_time_steps);
+}
+ocp_nlp_solver* GetSolver(SolverCapsule* capsule) {
+  return ACADOS_OBJ(acados_get_nlp_solver)(capsule);
+}
+
+ocp_nlp_config* GetConfig(SolverCapsule* capsule) {
+  return ACADOS_OBJ(acados_get_nlp_config)(capsule);
+}
+
+ocp_nlp_dims* GetDims(SolverCapsule* capsule) {
+  return ACADOS_OBJ(acados_get_nlp_dims)(capsule);
+}
+
+ocp_nlp_in* GetInput(SolverCapsule* capsule) {
+  return ACADOS_OBJ(acados_get_nlp_in)(capsule);
+}
+
+ocp_nlp_out* GetOutput(SolverCapsule* capsule) {
+  return ACADOS_OBJ(acados_get_nlp_out)(capsule);
+}
+
+ocp_nlp_opts* GetOpts(SolverCapsule* capsule) {
+  return static_cast<ocp_nlp_opts*>(ACADOS_OBJ(acados_get_nlp_opts)(capsule));
+}
+
+int Solve(SolverCapsule* capsule) { return ACADOS_OBJ(acados_solve)(capsule); }
+void SetParameters(SolverCapsule* capsule, int stage, double* value) {
+  ACADOS_OBJ(acados_update_params)
+  (capsule, stage, value, static_cast<int>(details::kParamSize));
+}
 // Working variables of the solver
 
 // Type of the full W matrix. Typically blkdiag(Q, R)
-using CostType = Eigen::Matrix<double, kRefSize, kRefSize>;
+using CostType = Eigen::Matrix<double, details::kRefSize, details::kRefSize>;
 
 // Type of the full W matrix at the terminal step (W_e). Typically Q
-using EndCostType = Eigen::Matrix<double, kEndRefSize, kEndRefSize>;
+using EndCostType =
+    Eigen::Matrix<double, details::kEndRefSize, details::kEndRefSize>;
 
 // Type of the Q matrix
-using StateCostType = Eigen::Matrix<double, kCostSize, kCostSize>;
+using StateCostType =
+    Eigen::Matrix<double, details::kCostSize, details::kCostSize>;
 
 // Type of state cost weights, i.e. diag(Q)
-using StateCostWeightType = Eigen::Matrix<double, kCostSize, 1>;
+using StateCostWeightType = Eigen::Matrix<double, details::kCostSize, 1>;
 
 // Type of the R matrix
-using InputCostType = Eigen::Matrix<double, kInputSize, kInputSize>;
+using InputCostType =
+    Eigen::Matrix<double, details::kInputSize, details::kInputSize>;
 
 // Type of input cost weights, i.e. diag(R)
-using InputCostWeightType = Eigen::Matrix<double, kInputSize, 1>;
+using InputCostWeightType = Eigen::Matrix<double, details::kInputSize, 1>;
 
 // Type of input bounds
-using BoundsType = Eigen::Matrix<double, kBoundsSize, 1>;
+using BoundsType = Eigen::Matrix<double, details::kBoundsSize, 1>;
 
 // Type of the reference vector. Typically [x_ref; u_ref]
-using RefType = Eigen::Matrix<double, kRefSize, 1>;
+using RefType = Eigen::Matrix<double, details::kRefSize, 1>;
 
 // Type of the reference vector at the terminal step. Typically x_ref
-using EndRefType = Eigen::Matrix<double, kEndRefSize, 1>;
+using EndRefType = Eigen::Matrix<double, details::kEndRefSize, 1>;
 
 // Type of the state vector
-using StateType = Eigen::Matrix<double, kStateSize, 1>;
+using StateType = Eigen::Matrix<double, details::kStateSize, 1>;
 
 // Type of the input vector
-using InputType = Eigen::Matrix<double, kInputSize, 1>;
+using InputType = Eigen::Matrix<double, details::kInputSize, 1>;
 
 // Type of the parameter vector
-using ParamType = Eigen::Matrix<double, kParamSize, 1>;
+using ParamType = Eigen::Matrix<double, details::kParamSize, 1>;
 
 // Types of working variables stacked along the last axis
-using StateTrajectoryType = Eigen::Matrix<double, kStateSize, Eigen::Dynamic>;
-using InputTrajectoryType = Eigen::Matrix<double, kInputSize, Eigen::Dynamic>;
+using StateTrajectoryType =
+    Eigen::Matrix<double, details::kStateSize, Eigen::Dynamic>;
+using InputTrajectoryType =
+    Eigen::Matrix<double, details::kInputSize, Eigen::Dynamic>;
 
 const BoundsType kNoBounds = BoundsType::Constant(1e50);
+}  // namespace details
 
 struct MPCInterface::Impl {
-  Impl() : capsule_(CreateCapsule()) {
-    ACADOS_CHECK(CreateSolver(capsule_.get()));
+  Impl() : capsule_(details::CreateCapsule()) {
+    ACADOS_CHECK(details::CreateSolver(capsule_.get()));
     init();
   }
 
-  explicit Impl(const VectorCRef& time_steps) : capsule_(CreateCapsule()) {
+  explicit Impl(const VectorCRef& time_steps)
+      : capsule_(details::CreateCapsule()) {
     using details::MutData;
-    ACADOS_CHECK(CreateSolverWithDiscretization(
+    ACADOS_CHECK(details::CreateSolverWithDiscretization(
         capsule_.get(), static_cast<int>(time_steps.size()),
         MutData(time_steps)));
     init();
   }
 
-  ~Impl() { FreeSolver(capsule_.get()); }
+  ~Impl() { details::FreeSolver(capsule_.get()); }
 
   void resetSolver(bool reset_qp_solver_mem) const {
-    ResetSolver(capsule_.get(), reset_qp_solver_mem);
+    details::ResetSolver(capsule_.get(), reset_qp_solver_mem);
   }
 
   void setInitialState(const VectorCRef& initial_state) const {
@@ -132,9 +223,9 @@ struct MPCInterface::Impl {
 
   void setCosts(const MatrixCRef& Q, const MatrixCRef& R) const {
     using details::MutData;
-    CostType costs = CostType::Zero();
-    costs.topLeftCorner<kCostSize, kCostSize>() = Q;
-    costs.bottomRightCorner<kInputSize, kInputSize>() = R;
+    details::CostType costs = details::CostType::Zero();
+    costs.topLeftCorner<details::kCostSize, details::kCostSize>() = Q;
+    costs.bottomRightCorner<details::kInputSize, details::kInputSize>() = R;
     for (int i = 0; i < num_mpc_nodes(); ++i) {
       ocp_nlp_cost_model_set(cfg_, dims_, in_, i, "W", costs.data());
     }
@@ -143,8 +234,8 @@ struct MPCInterface::Impl {
 
   void setCostWeights(const VectorCRef& q_weights,
                       const VectorCRef& r_weights) const {
-    setCosts(StateCostType(q_weights.asDiagonal()),
-             InputCostType(r_weights.asDiagonal()));
+    setCosts(details::StateCostType(q_weights.asDiagonal()),
+             details::InputCostType(r_weights.asDiagonal()));
   }
 
   [[nodiscard]] bool setBounds(const VectorCRef& lbu,
@@ -166,20 +257,20 @@ struct MPCInterface::Impl {
   }
 
   [[nodiscard]] Eigen::VectorXd getState(int i) const {
-    StateType res;
+    details::StateType res;
     ocp_nlp_out_get(cfg_, dims_, out_, i, "x", res.data());
     return res;
   }
 
   [[nodiscard]] Eigen::VectorXd getInput(int i) const {
-    InputType res;
+    details::InputType res;
     ocp_nlp_out_get(cfg_, dims_, out_, i, "u", res.data());
     return res;
   }
 
   [[nodiscard]] Eigen::MatrixXd getState() const {
-    StateTrajectoryType predicted_states(static_cast<int>(kStateSize),
-                                         num_mpc_nodes());
+    details::StateTrajectoryType predicted_states(
+        static_cast<int>(details::kStateSize), num_mpc_nodes());
     for (int i = 0; i < num_mpc_nodes(); ++i) {
       predicted_states.col(i) = getState(i);
     }
@@ -187,7 +278,8 @@ struct MPCInterface::Impl {
   }
 
   [[nodiscard]] Eigen::MatrixXd getInput() const {
-    InputTrajectoryType inputs(static_cast<int>(kInputSize), num_mpc_nodes());
+    details::InputTrajectoryType inputs(static_cast<int>(details::kInputSize),
+                                        num_mpc_nodes());
     for (int i = 0; i < num_mpc_nodes(); ++i) {
       inputs.col(i) = getInput(i);
     }
@@ -196,7 +288,8 @@ struct MPCInterface::Impl {
 
   void setReferenceState(const VectorCRef& state,
                          const VectorCRef& input) const {
-    const RefType ref = (RefType() << state, input).finished();
+    const details::RefType ref =
+        (details::RefType() << state, input).finished();
     for (int i = 0; i < num_mpc_nodes(); ++i) {
       setReference(i, ref);
     }
@@ -212,7 +305,7 @@ struct MPCInterface::Impl {
           "Number of state and input references do not match");
     }
 
-    RefType ref;
+    details::RefType ref;
     for (int i = 0; i < num_mpc_nodes(); ++i) {
       const int i_state = std::min(n_x_samples - 1, i);
       const int i_input = std::min(n_u_samples - 1, i);
@@ -224,7 +317,7 @@ struct MPCInterface::Impl {
   }
 
   void setParameters(int i, const VectorCRef& params) const {
-    SetParameters(capsule_.get(), i, details::MutData(params));
+    details::SetParameters(capsule_.get(), i, details::MutData(params));
   }
 
   void setConstantParameters(const VectorCRef& params) const {
@@ -239,40 +332,42 @@ struct MPCInterface::Impl {
 
   [[nodiscard]] Eigen::VectorXd optimize(const VectorCRef& state) const {
     setInitialState(state);
-    ACADOS_CHECK(Solve(capsule_.get()));
+    ACADOS_CHECK(details::Solve(capsule_.get()));
     return getInput(0);
   }
 
   void init() {
-    using StateIdxs = Eigen::Matrix<int, kStateSize, 1>;
-    using InputIdxs = Eigen::Matrix<int, kInputSize, 1>;
+    using StateIdxs = Eigen::Matrix<int, details::kStateSize, 1>;
+    using InputIdxs = Eigen::Matrix<int, details::kInputSize, 1>;
 
-    cfg_ = GetConfig(capsule_.get());
-    dims_ = GetDims(capsule_.get());
-    in_ = GetInput(capsule_.get());
-    out_ = GetOutput(capsule_.get());
-    solver_ = GetSolver(capsule_.get());
-    opts_ = GetOpts(capsule_.get());
+    cfg_ = details::GetConfig(capsule_.get());
+    dims_ = details::GetDims(capsule_.get());
+    in_ = details::GetInput(capsule_.get());
+    out_ = details::GetOutput(capsule_.get());
+    solver_ = details::GetSolver(capsule_.get());
+    opts_ = details::GetOpts(capsule_.get());
 
     // Initialize the state constraint
-    StateIdxs constrained_state_idx = StateIdxs::LinSpaced(0, kStateSize - 1);
+    StateIdxs constrained_state_idx =
+        StateIdxs::LinSpaced(0, details::kStateSize - 1);
     ocp_nlp_constraints_model_set(cfg_, dims_, in_, 0, "idxbx",
                                   constrained_state_idx.data());
 
-    InputIdxs constrained_input_idx = InputIdxs::LinSpaced(0, kInputSize - 1);
+    InputIdxs constrained_input_idx =
+        InputIdxs::LinSpaced(0, details::kInputSize - 1);
     for (int i = 0; i < num_mpc_nodes(); ++i) {
       ocp_nlp_constraints_model_set(cfg_, dims_, in_, i, "idxbu",
                                     constrained_input_idx.data());
 
-      std::ignore = setBounds(-kNoBounds, kNoBounds);
+      std::ignore = setBounds(-details::kNoBounds, details::kNoBounds);
     }
 
     // Initialize the output struct
     for (int i = 0; i < num_mpc_nodes(); ++i) {
-      setReference(i, RefType::Zero());
-      setState(i, StateType::Zero());
+      setReference(i, details::RefType::Zero());
+      setState(i, details::StateType::Zero());
     }
-    setTerminalState(StateType::Zero());
+    setTerminalState(details::StateType::Zero());
   }
 
   void setState(int i, const VectorCRef& state) const {
@@ -292,7 +387,7 @@ struct MPCInterface::Impl {
 
   [[nodiscard]] int num_mpc_nodes() const { return dims_->N; }
 
-  using Capsule = details::Handle<SolverCapsule, FreeCapsule>;
+  using Capsule = std::unique_ptr<details::SolverCapsule, details::FreeCapsule>;
 
   Capsule capsule_;
 

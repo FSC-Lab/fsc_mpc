@@ -101,18 +101,13 @@ set(MODEL_NAME_LOWER
 string(TOUPPER ${MODEL_NAME_LOWER} MODEL_NAME_UPPER CACHE INTERNAL "")
 
 # Step 2: Compile the generated source AND the cpp API wrapper
-add_library(fsc_mpc_solver ${CODEGEN_FILES} src/fsc_mpc/solver_wrapper.cpp)
+add_library(fsc_mpc_solver ${CODEGEN_FILES})
 add_dependencies(fsc_mpc_solver acados_python_codegen)
 target_compile_features(fsc_mpc_solver PUBLIC cxx_std_17)
-target_compile_definitions(
-  fsc_mpc_solver PUBLIC "MODEL_NAME_LOWER=${MODEL_NAME_LOWER}"
-                        "MODEL_NAME_UPPER=${MODEL_NAME_UPPER}")
-target_include_directories(
-  fsc_mpc_solver
-  PUBLIC "$<BUILD_INTERFACE:${MPC_CODEGEN_DIR};${PROJECT_SOURCE_DIR}/include>")
+
+target_include_directories(fsc_mpc_solver
+                           PUBLIC "$<BUILD_INTERFACE:${MPC_CODEGEN_DIR}>")
 target_link_libraries(fsc_mpc_solver PUBLIC acados blasfeo hpipm)
-add_library(fsc_mpc::solver ALIAS fsc_mpc_solver)
-set_property(TARGET fsc_mpc_solver PROPERTY EXPORT_NAME solver)
 set_property(TARGET fsc_mpc_solver PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 # Step 3: Compile the OOPified MPC solver
@@ -121,8 +116,13 @@ target_include_directories(
   fsc_mpc_mpc_interface
   PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>")
 target_compile_features(fsc_mpc_mpc_interface PUBLIC cxx_std_17)
-target_link_libraries(fsc_mpc_mpc_interface PUBLIC fsc_mpc::solver
-                                                   Eigen3::Eigen)
+target_compile_definitions(
+  fsc_mpc_mpc_interface PUBLIC "MODEL_NAME_LOWER=${MODEL_NAME_LOWER}"
+                               "MODEL_NAME_UPPER=${MODEL_NAME_UPPER}")
+target_link_libraries(
+  fsc_mpc_mpc_interface
+  PUBLIC Eigen3::Eigen
+  PRIVATE fsc_mpc_solver)
 set_property(TARGET fsc_mpc_mpc_interface PROPERTY EXPORT_NAME mpc_interface)
 add_library(fsc_mpc::mpc_interface ALIAS fsc_mpc_mpc_interface)
 set_property(TARGET fsc_mpc_mpc_interface PROPERTY POSITION_INDEPENDENT_CODE ON)
