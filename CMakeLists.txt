@@ -3,9 +3,18 @@ project(fsc_mpc VERSION 0.0.1)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_FortranLibs ON)
 set(CMAKE_DISABLE_FIND_PACKAGE_OpenBLAS ON)
+
 find_package(OpenMP REQUIRED)
 find_package(acados REQUIRED)
-find_package(Eigen3 REQUIRED)
+
+include(FetchContent)
+FetchContent_Declare(
+  Eigen3
+  GIT_REPOSITORY http://gitlab.com/libeigen/eigen.git
+  GIT_TAG 3.4.0
+  GIT_SHALLOW TRUE
+  SYSTEM FIND_PACKAGE_ARGS NAMES Eigen3 CONFIG 3.4.0)
+FetchContent_MakeAvailable(Eigen3)
 
 option(MPC_GENERATE_SOLVER "Toggles regenerating the solver" OFF)
 
@@ -118,7 +127,6 @@ set_property(TARGET fsc_mpc_mpc_interface PROPERTY EXPORT_NAME mpc_interface)
 add_library(fsc_mpc::mpc_interface ALIAS fsc_mpc_mpc_interface)
 set_property(TARGET fsc_mpc_mpc_interface PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-option(BUILD_TESTING "Build tests" OFF)
 include(CTest)
 if(BUILD_TESTING)
   if(NOT MPC_CODEGEN_DIR STREQUAL DEFAULT_CODEGEN_DIR)

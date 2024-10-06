@@ -40,17 +40,17 @@ static void BenchmarkMPC(benchmark::State& state) {
       Eigen::VectorXd::Constant(n_steps, 1.0 / static_cast<double>(n_steps));
   MPCInterface mpc(time_steps);
 
-  mpc.setConstantParameters(MPCInterface::ParamType{1.0});
+  mpc.setConstantParameters(Eigen::Vector<double, 1>{1.0});
 
-  MPCInterface::StateType state_ref;
+  Eigen::Vector<double, 10> state_ref;
   state_ref << kMaxAlt, 0, 0, Eigen::Quaterniond::Identity().coeffs(),
       Eigen::Vector3d::Zero();
 
   constexpr double kGravAccel = 9.81;
-  MPCInterface::InputType input_ref{kGravAccel, 0, 0, 0};
+  Eigen::Vector4d input_ref{kGravAccel, 0, 0, 0};
   mpc.setReferenceState(state_ref, input_ref);
 
-  MPCInterface::StateType x_op;
+  Eigen::Vector<double, 10> x_op;
 
   Eigen::Ref<Eigen::Vector3d> position(x_op.head<3>());
   position.setZero();
@@ -65,7 +65,7 @@ static void BenchmarkMPC(benchmark::State& state) {
 
     state.ResumeTiming();
 
-    MPCInterface::InputType input = mpc.optimize(x_op);
+    Eigen::Vector4d input = mpc.optimize(x_op);
     benchmark::DoNotOptimize(input);
   }
 }

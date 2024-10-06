@@ -26,8 +26,6 @@
 #include <stdexcept>
 
 #include "Eigen/Dense"
-#include "fsc_mpc/internal.hpp"
-#include "fsc_mpc/solver_wrapper.hpp"
 
 namespace fsc::control {
 
@@ -37,75 +35,15 @@ class AcadosWrapperException : public std::runtime_error {
 
 class MPCInterface {
  public:
-  enum {
-    kStateSize = details::ToUnderlying(Dimensions::kStateSize),
-    kInputSize = details::ToUnderlying(Dimensions::kInputSize),
-    kRefSize = details::ToUnderlying(Dimensions::kRefSize),
-    kEndRefSize = details::ToUnderlying(Dimensions::kEndRefSize),
-    kSamples = details::ToUnderlying(Dimensions::kSamples),
-    kCostSize = details::ToUnderlying(Dimensions::kCostSize),
-    kBoundsSize = details::ToUnderlying(Dimensions::kBoundsSize),
-    kParamSize = details::ToUnderlying(Dimensions::kParamSize)
-  };
-
-  // Working variables of the solver
-
-  // Type of the full W matrix. Typically blkdiag(Q, R)
-  using CostType = Eigen::Matrix<double, kRefSize, kRefSize>;
-
-  // Type of the full W matrix at the terminal step (W_e). Typically Q
-  using EndCostType = Eigen::Matrix<double, kEndRefSize, kEndRefSize>;
-
-  // Type of the Q matrix
-  using StateCostType = Eigen::Matrix<double, kCostSize, kCostSize>;
-
-  // Type of state cost weights, i.e. diag(Q)
-  using StateCostWeightType = Eigen::Matrix<double, kCostSize, 1>;
-
-  // Type of the R matrix
-  using InputCostType = Eigen::Matrix<double, kInputSize, kInputSize>;
-
-  // Type of input cost weights, i.e. diag(R)
-  using InputCostWeightType = Eigen::Matrix<double, kInputSize, 1>;
-
-  // Type of input bounds
-  using BoundsType = Eigen::Matrix<double, kBoundsSize, 1>;
-
-  // Type of the reference vector. Typically [x_ref; u_ref]
-  using RefType = Eigen::Matrix<double, kRefSize, 1>;
-
-  // Type of the reference vector at the terminal step. Typically x_ref
-  using EndRefType = Eigen::Matrix<double, kEndRefSize, 1>;
-
-  // Type of the state vector
-  using StateType = Eigen::Matrix<double, kStateSize, 1>;
-
-  // Type of the input vector
-  using InputType = Eigen::Matrix<double, kInputSize, 1>;
-
-  // Type of the parameter vector
-  using ParamType = Eigen::Matrix<double, kParamSize, 1>;
-
-  // Types of working variables stacked along the last axis
-  using StateTrajectoryType = Eigen::Matrix<double, kStateSize, Eigen::Dynamic>;
-  using InputTrajectoryType = Eigen::Matrix<double, kInputSize, Eigen::Dynamic>;
-
   // Reference wrapper for declaring (constant) input parameters of Eigen
   // objects
   // https://stackoverflow.com/questions/21132538/correct-usage-of-the-eigenref-class
-  template <typename T>
-  using InRef = const Eigen::Ref<const T> &;
-
-  static const BoundsType kNoBounds;
+  using VectorCRef = Eigen::Ref<const Eigen::VectorXd>;
+  using MatrixCRef = Eigen::Ref<const Eigen::MatrixXd>;
 
   MPCInterface();
 
-  explicit MPCInterface(InRef<Eigen::VectorXd> time_steps);
-
-  // Move ctors must be explicitly defaulted since we have a custom dtor
-  MPCInterface(MPCInterface &&other) noexcept;
-
-  MPCInterface &operator=(MPCInterface &&other) noexcept;
+  explicit MPCInterface(const VectorCRef& time_steps);
 
   ~MPCInterface();
 
@@ -124,7 +62,7 @@ class MPCInterface {
    * @param initial_state A state vector containing the latest, actual system
    * state
    */
-  void setInitialState(InRef<StateType> initial_state);
+  void setInitialState(const VectorCRef& initial_state);
 
   /**
    * @brief Set the reference of the solver at some given shooting node.
@@ -133,7 +71,7 @@ class MPCInterface {
    * @param ref The reference vector, typically containing a stack of the state
    * reference and input reference
    */
-  void setReference(int i, InRef<RefType> ref);
+  void setReference(int i, const VectorCRef& ref);
 
   /**
    * @brief Set the reference of the solver at the terminal shooting node.
@@ -141,7 +79,7 @@ class MPCInterface {
    * @param terminal_ref The reference vector at the terminal shooting node,
    * typically containing just the state reference
    */
-  void setTerminalReference(InRef<EndRefType> terminal_ref);
+  void setTerminalReference(const VectorCRef& terminal_ref);
 
   /**
    * @brief Set the state and input cost matrices
@@ -152,7 +90,7 @@ class MPCInterface {
    * @param Q The state cost matrix
    * @param R The input cost matrix
    */
-  void setCosts(InRef<StateCostType> Q, InRef<InputCostType> R);
+  void setCosts(const MatrixCRef& Q, const MatrixCRef& R);
 
   /**
    * @brief Set the state and input cost weights
@@ -160,8 +98,7 @@ class MPCInterface {
    * @param q_weights A vector of state cost weights
    * @param r_weights A vector of input cost weights
    */
-  void setCostWeights(InRef<StateCostWeightType> q_weights,
-                      InRef<InputCostWeightType> r_weights);
+  void setCostWeights(const VectorCRef& q_weights, const VectorCRef& r_weights);
 
   /**
    * @brief Set bounds on system inputs
@@ -172,39 +109,39 @@ class MPCInterface {
    * @param lbu The lower bounds on system inputs
    * @param ubu The upper bounds on system inputs
    */
-  void setBounds(InRef<BoundsType> lbu, InRef<BoundsType> ubu);
+  bool setBounds(const VectorCRef& lbu, const VectorCRef& ubu);
 
   /**
    * @brief Get the state predicted by the solver at some given shooting node
    *
    * @param i Index of the shooting node
-   * @return StateType The state vector
+   * @return Eigen::VectorXd The state vector
    */
-  [[nodiscard]] StateType getState(int i) const;
+  [[nodiscard]] Eigen::VectorXd getState(int i) const;
 
   /**
    * @brief Get the input predicted by the solver at some given shooting node
    *
    * @param i Index of the shooting node
-   * @return InputType The input vector
+   * @return Eigen::VectorXd The input vector
    */
-  [[nodiscard]] InputType getInput(int i) const;
+  [[nodiscard]] Eigen::VectorXd getInput(int i) const;
 
   /**
    * @brief Get the state predicted by the solver over all shooting nodes
    *
-   * @return InputType The state vector for each shooting node stacked over the
-   * last axis
+   * @return Eigen::MatrixXd The state vector for each shooting node stacked
+   * over the last axis
    */
-  [[nodiscard]] StateTrajectoryType getState() const;
+  [[nodiscard]] Eigen::MatrixXd getState() const;
 
   /**
    * @brief Get the input predicted by the solver over all shooting nodes
    *
-   * @return InputType The input vector for each shooting node stacked over the
-   * last axis
+   * @return Eigen::MatrixXd The input vector for each shooting node stacked
+   * over the last axis
    */
-  [[nodiscard]] InputTrajectoryType getInput() const;
+  [[nodiscard]] Eigen::MatrixXd getInput() const;
 
   /**
    * @brief Set the state and input reference over all shooting nodes to a
@@ -213,7 +150,7 @@ class MPCInterface {
    * @param state The state setpoint
    * @param input The input setpoint
    */
-  void setReferenceState(InRef<StateType> state, InRef<InputType> input);
+  void setReferenceState(const VectorCRef& state, const VectorCRef& input);
 
   /**
    * @brief Set the state and input reference over all shooting nodes to a
@@ -230,8 +167,8 @@ class MPCInterface {
    * @param state_ref The matrix containing the stack of state references
    * @param input_ref The matrix containing the stack of input references
    */
-  void setReferenceTrajectory(InRef<StateTrajectoryType> state_ref,
-                              InRef<InputTrajectoryType> input_ref);
+  void setReferenceTrajectory(const MatrixCRef& state_ref,
+                              const MatrixCRef& input_ref);
 
   /**
    * @brief Set the online parameters of the solver at some given shooting node
@@ -239,7 +176,7 @@ class MPCInterface {
    * @param i Index of the shooting node
    * @param params The parameter vector
    */
-  void setParameters(int i, InRef<ParamType> params);
+  void setParameters(int i, const VectorCRef& params);
 
   /**
    * @brief Set the online parameters of the solver that is constant over all
@@ -247,7 +184,7 @@ class MPCInterface {
    *
    * @param params The parameter vector
    */
-  void setConstantParameters(InRef<ParamType> params);
+  void setConstantParameters(const VectorCRef& params);
 
   /**
    * @brief Sets the print level of the solver
@@ -262,9 +199,9 @@ class MPCInterface {
    * optimized input on the first step of the predicted input trajectory
    *
    * @param state A state vector containing the latest, actual system state
-   * @return InputType The first optimized input
+   * @return Eigen::VectorXd The first optimized input
    */
-  InputType optimize(InRef<StateType> state);
+  Eigen::VectorXd optimize(const VectorCRef& state);
 
   /**
    * @brief Gets the time step at a given shooting node
@@ -290,26 +227,9 @@ class MPCInterface {
   [[nodiscard]] int num_mpc_nodes() const;
 
  private:
-  using Capsule = details::Handle<SolverCapsule, FreeCapsule>;
+  struct Impl;
 
-  inline SolverCapsule *capsule() { return capsule_.get(); }
-
-  void init();
-
-  void setState(int i, InRef<StateType> state);
-
-  void setTerminalState(InRef<StateType> state);
-
-  void setInput(int i, InRef<InputType> input);
-
-  Capsule capsule_;
-
-  ocp_nlp_config *config_{nullptr};
-  ocp_nlp_dims *dims_{nullptr};
-  ocp_nlp_in *in_{nullptr};
-  ocp_nlp_out *out_{nullptr};
-  ocp_nlp_solver *solver_{nullptr};
-  ocp_nlp_opts *opts_{nullptr};
+  std::unique_ptr<Impl> pimpl_;
 };
 
 }  // namespace fsc::control

@@ -175,7 +175,7 @@ void TestMPCInterface::SetUp() {
       model, sim_period_, trajectory["time"].coeff(0),
       trajectory["states"].col(0), trajectory["inputs"].col(0));
 
-  mpc.setConstantParameters(MPCInterface::ParamType{mass});
+  mpc.setConstantParameters(Eigen::Vector<double, 1>{mass});
 }
 
 void TestMPCInterface::RunSimulation() {
@@ -190,16 +190,14 @@ void TestMPCInterface::RunSimulation() {
     actual_states.col(i) = sim_->state();
     auto n_state_ref =
         i + n_mpc_nodes + 1 > state_ref_sz ? state_ref_sz - i : n_mpc_nodes + 1;
-    const MPCInterface::StateTrajectoryType state_ref =
-        full_state_ref.middleCols(i, n_state_ref);
+    const Eigen::MatrixXd state_ref = full_state_ref.middleCols(i, n_state_ref);
 
     auto n_input_ref =
         i + n_mpc_nodes > input_ref_sz ? input_ref_sz - i : n_mpc_nodes;
-    const MPCInterface::InputTrajectoryType input_ref =
-        full_input_ref.middleCols(i, n_input_ref);
+    const Eigen::MatrixXd input_ref = full_input_ref.middleCols(i, n_input_ref);
 
     mpc.setReferenceTrajectory(state_ref, input_ref);
-    const MPCInterface::InputType u_setpoint = mpc.optimize(sim_->state());
+    const Eigen::Vector4d u_setpoint = mpc.optimize(sim_->state());
     double simulation_time = 0.0;
 
     actual_inputs.col(i) = u_setpoint;
@@ -214,8 +212,8 @@ void TestMPCInterface::RunSimulation() {
 TEST_F(TestMPCInterface, testBounding) {
   const double neg_bound = -10.0;
   const double pos_bound = 10.0;
-  mpc.setBounds(MPCInterface::BoundsType::Constant(neg_bound),
-                MPCInterface::BoundsType::Constant(pos_bound));
+  mpc.setBounds(Eigen::Vector4d::Constant(neg_bound),
+                Eigen::Vector4d::Constant(pos_bound));
   RunSimulation();
   ASSERT_TRUE((actual_inputs.array() > (1.0 + 1e-5) * neg_bound).all())
       << actual_inputs.minCoeff();
